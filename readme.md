@@ -29,6 +29,8 @@ Tambien crea una CA interna local y guarda los certificados emitidos en `generat
 - `GET /api/me?as_user=1`
 - `GET /api/users?as_user=1`
 - `GET /api/audit-logs?as_user=1`
+- `GET /ui/users/{id}/certificate/view?as_user=1`
+- `GET /ui/ca/certificate/view`
 - `GET /ui/ca/certificate`
 
 ## Documentacion

@@ -60,4 +60,4 @@ Luego abre `http://127.0.0.1:8000`.
 
 - La CA se guarda en `generated/certs/ca/`.
 - Los `.p12` de usuarios se guardan en `generated/certs/users/`.
-- La UI permite descargar el certificado de la CA, el certificado PEM del usuario y el `.p12`.
+- La UI permite ver el certificado en navegador, descargar el certificado de la CA, el certificado PEM del usuario y el `.p12`.

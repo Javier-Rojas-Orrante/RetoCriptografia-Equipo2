@@ -67,6 +67,76 @@ def redirect_home(actor_id: int) -> RedirectResponse:
     return RedirectResponse(url=f"/?{urlencode({'as_user': actor_id})}", status_code=303)
 
 
+def render_certificate_page(title: str, summary: dict, back_href: str) -> str:
+    san_items = "".join(f"<li>{escape(item)}</li>" for item in summary["san_emails"]) or "<li>Sin SAN de correo.</li>"
+    return f"""
+    <!doctype html>
+    <html lang="es">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>{escape(title)}</title>
+        <style>
+          :root {{
+            --bg: #f5efe2;
+            --card: #fffdf8;
+            --ink: #1f2b37;
+            --line: #dfd4c0;
+            --accent: #a64b2a;
+          }}
+          * {{ box-sizing: border-box; }}
+          body {{ margin: 0; background: linear-gradient(180deg, #efe3d0, var(--bg)); color: var(--ink); font-family: Georgia, serif; }}
+          main {{ max-width: 980px; margin: 0 auto; padding: 28px 18px 52px; }}
+          .panel {{ background: var(--card); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 12px 32px rgba(31, 43, 55, 0.08); padding: 22px; }}
+          .topbar {{ display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }}
+          .back-link {{ color: var(--accent); font-weight: 700; text-decoration: none; }}
+          dl {{ display: grid; grid-template-columns: 180px 1fr; gap: 10px 14px; margin: 22px 0; }}
+          dt {{ font-weight: 700; }}
+          dd {{ margin: 0; word-break: break-word; }}
+          code, pre {{ background: #f6efe2; border-radius: 12px; }}
+          code {{ padding: 3px 6px; }}
+          pre {{ padding: 14px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }}
+          ul {{ margin: 0; padding-left: 18px; }}
+          details {{ margin-top: 20px; }}
+          @media (max-width: 700px) {{
+            dl {{ grid-template-columns: 1fr; }}
+          }}
+        </style>
+      </head>
+      <body>
+        <main>
+          <section class="panel">
+            <div class="topbar">
+              <h1>{escape(title)}</h1>
+              <a class="back-link" href="{escape(back_href)}">Volver</a>
+            </div>
+            <dl>
+              <dt>Sujeto</dt>
+              <dd>{escape(summary["subject"])}</dd>
+              <dt>Emisor</dt>
+              <dd>{escape(summary["issuer"])}</dd>
+              <dt>Serie</dt>
+              <dd><code>{escape(summary["serial"])}</code></dd>
+              <dt>Vigencia inicio</dt>
+              <dd>{escape(summary["not_before"].isoformat(sep=" ", timespec="seconds"))}</dd>
+              <dt>Vigencia fin</dt>
+              <dd>{escape(summary["not_after"].isoformat(sep=" ", timespec="seconds"))}</dd>
+              <dt>SHA-256</dt>
+              <dd><code>{escape(summary["fingerprint_sha256"])}</code></dd>
+            </dl>
+            <h2>SAN</h2>
+            <ul>{san_items}</ul>
+            <details>
+              <summary>Ver PEM completo</summary>
+              <pre>{escape(summary["pem"])}</pre>
+            </details>
+          </section>
+        </main>
+      </body>
+    </html>
+    """
+
+
 def render_dashboard(actor, users, roles, permissions, logs) -> str:
     permission_text = ", ".join(f"{item['resource']}:{item['action']}" for item in permissions) or "sin permisos"
     ca_download_url = "/ui/ca/certificate"
@@ -139,6 +209,7 @@ def render_dashboard(actor, users, roles, permissions, logs) -> str:
               <div>Serial: <code>{escape(user.certificate_serial)}</code></div>
               <div>Vence: {escape(user.certificate_not_after.isoformat(sep=' ', timespec='minutes')) if user.certificate_not_after else 'n/a'}</div>
               <div class="download-links">
+                <a href="/ui/users/{user.id}/certificate/view?as_user={actor.id}">Ver certificado</a>
                 <a href="/ui/users/{user.id}/certificate.pem?as_user={actor.id}">Certificado PEM</a>
                 <a href="/ui/users/{user.id}/certificate.p12?as_user={actor.id}">Descargar .p12</a>
               </div>
@@ -265,6 +336,7 @@ def render_dashboard(actor, users, roles, permissions, logs) -> str:
               <h2>CA interna</h2>
               <p>La demo mantiene una autoridad certificadora local y firma certificados X.509 para cada usuario emitido.</p>
               <div class="download-links">
+                <a href="/ui/ca/certificate/view">Ver certificado CA</a>
                 <a href="{ca_download_url}">Descargar certificado de la CA</a>
               </div>
             </article>
@@ -504,6 +576,24 @@ def download_p12(user_id: int, as_user: int | None = Query(default=None), db: Se
     )
 
 
+@app.get("/ui/users/{user_id}/certificate/view", response_class=HTMLResponse)
+def view_user_certificate(user_id: int, as_user: int | None = Query(default=None), db: Session = Depends(get_db)):
+    actor = get_actor_or_404(db, as_user)
+    user = UserService.get_user(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if actor.id != user.id and not AuthorizationService.authorize(db, actor, "users", "view"):
+        raise HTTPException(status_code=403, detail="Not allowed to view this certificate")
+
+    summary = CertificateService.describe_user_certificate(user)
+    if not summary:
+        raise HTTPException(status_code=404, detail="Certificate not found")
+
+    back_href = f"/?{urlencode({'as_user': actor.id})}"
+    return HTMLResponse(render_certificate_page(f"Certificado de {user.full_name}", summary, back_href))
+
+
 @app.get("/ui/users/{user_id}/certificate.pem")
 def download_certificate_pem(user_id: int, as_user: int | None = Query(default=None), db: Session = Depends(get_db)):
     actor = get_actor_or_404(db, as_user)
@@ -518,6 +608,12 @@ def download_certificate_pem(user_id: int, as_user: int | None = Query(default=N
         media_type="application/x-pem-file",
         headers={"Content-Disposition": f'attachment; filename="{user.email.replace("@", "_")}.crt.pem"'},
     )
+
+
+@app.get("/ui/ca/certificate/view", response_class=HTMLResponse)
+def view_ca_certificate():
+    summary = CertificateAuthorityService.describe_ca_certificate()
+    return HTMLResponse(render_certificate_page("Certificado de la CA interna", summary, "/"))
 
 
 @app.get("/ui/ca/certificate")

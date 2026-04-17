@@ -51,6 +51,33 @@ DEMO_USERS = [
 ]
 
 
+def _name_to_text(name: x509.Name) -> str:
+    parts = []
+    for attribute in name:
+        label = getattr(attribute.oid, "_name", None) or attribute.oid.dotted_string
+        parts.append(f"{label}={attribute.value}")
+    return ", ".join(parts)
+
+
+def _certificate_summary(certificate: x509.Certificate, pem_text: str) -> dict:
+    try:
+        san_extension = certificate.extensions.get_extension_for_class(x509.SubjectAlternativeName)
+        san_emails = san_extension.value.get_values_for_type(x509.RFC822Name)
+    except x509.ExtensionNotFound:
+        san_emails = []
+
+    return {
+        "subject": _name_to_text(certificate.subject),
+        "issuer": _name_to_text(certificate.issuer),
+        "serial": format(certificate.serial_number, "x"),
+        "not_before": certificate.not_valid_before_utc.replace(tzinfo=None),
+        "not_after": certificate.not_valid_after_utc.replace(tzinfo=None),
+        "san_emails": san_emails,
+        "fingerprint_sha256": certificate.fingerprint(hashes.SHA256()).hex(),
+        "pem": pem_text,
+    }
+
+
 class AuditService:
     @staticmethod
     def log(
@@ -171,6 +198,14 @@ class CertificateAuthorityService:
         _, _ = cls.ensure_ca()
         return cls.ca_cert_path
 
+    @classmethod
+    def describe_ca_certificate(cls) -> dict:
+        _, certificate = cls.ensure_ca()
+        return _certificate_summary(
+            certificate,
+            certificate.public_bytes(serialization.Encoding.PEM).decode(),
+        )
+
 
 class CertificateService:
     @staticmethod
@@ -247,6 +282,13 @@ class CertificateService:
         db.commit()
         db.refresh(user)
         return user
+
+    @staticmethod
+    def describe_user_certificate(user: User) -> dict | None:
+        if not user.certificate_pem:
+            return None
+        certificate = x509.load_pem_x509_certificate(user.certificate_pem.encode())
+        return _certificate_summary(certificate, user.certificate_pem)
 
 
 class BootstrapService:
