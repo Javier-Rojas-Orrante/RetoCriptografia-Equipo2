@@ -1,8 +1,16 @@
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
-from sqlalchemy import select
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.serialization import pkcs12
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
+from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session, joinedload
 
+from app.config import settings
+from app.db import engine
 from app.models import AuditLog, Permission, Role, RolePermission, User
 
 ROLE_DEFINITIONS = {
@@ -74,9 +82,179 @@ class AuditService:
         return list(db.scalars(select(AuditLog).order_by(AuditLog.id.desc()).limit(limit)).all())
 
 
+class SchemaService:
+    @staticmethod
+    def ensure_user_certificate_columns() -> None:
+        inspector = inspect(engine)
+        if "users" not in inspector.get_table_names():
+            return
+
+        current_columns = {column["name"] for column in inspector.get_columns("users")}
+        extra_columns = {
+            "certificate_serial": "VARCHAR(128)",
+            "certificate_pem": "TEXT",
+            "certificate_not_before": "DATETIME",
+            "certificate_not_after": "DATETIME",
+            "p12_path": "VARCHAR(255)",
+        }
+
+        with engine.begin() as connection:
+            for column_name, column_type in extra_columns.items():
+                if column_name not in current_columns:
+                    connection.execute(text(f"ALTER TABLE users ADD COLUMN {column_name} {column_type}"))
+
+
+class CertificateAuthorityService:
+    base_dir = Path(settings.certs_dir)
+    ca_dir = base_dir / "ca"
+    user_dir = base_dir / "users"
+    ca_key_path = ca_dir / "ca-key.pem"
+    ca_cert_path = ca_dir / "ca-cert.pem"
+
+    @classmethod
+    def ensure_ca(cls) -> tuple[rsa.RSAPrivateKey, x509.Certificate]:
+        cls.ca_dir.mkdir(parents=True, exist_ok=True)
+        cls.user_dir.mkdir(parents=True, exist_ok=True)
+
+        if cls.ca_key_path.exists() and cls.ca_cert_path.exists():
+            private_key = serialization.load_pem_private_key(cls.ca_key_path.read_bytes(), password=None)
+            certificate = x509.load_pem_x509_certificate(cls.ca_cert_path.read_bytes())
+            return private_key, certificate
+
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        now = datetime.now(UTC)
+        subject = issuer = x509.Name(
+            [
+                x509.NameAttribute(NameOID.COUNTRY_NAME, "MX"),
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Casa Monarca Demo CA"),
+                x509.NameAttribute(NameOID.COMMON_NAME, "Casa Monarca Internal CA"),
+            ]
+        )
+        certificate = (
+            x509.CertificateBuilder()
+            .subject_name(subject)
+            .issuer_name(issuer)
+            .public_key(private_key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(days=1))
+            .not_valid_after(now + timedelta(days=3650))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+            .add_extension(
+                x509.KeyUsage(
+                    digital_signature=True,
+                    key_encipherment=False,
+                    content_commitment=False,
+                    data_encipherment=False,
+                    key_agreement=False,
+                    key_cert_sign=True,
+                    crl_sign=True,
+                    encipher_only=False,
+                    decipher_only=False,
+                ),
+                critical=True,
+            )
+            .sign(private_key=private_key, algorithm=hashes.SHA256())
+        )
+
+        cls.ca_key_path.write_bytes(
+            private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+        )
+        cls.ca_cert_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
+        return private_key, certificate
+
+    @classmethod
+    def get_ca_certificate_path(cls) -> Path:
+        _, _ = cls.ensure_ca()
+        return cls.ca_cert_path
+
+
+class CertificateService:
+    @staticmethod
+    def issue_for_user(db: Session, user: User, password: str, reissue: bool = False) -> User:
+        if not password.strip():
+            raise ValueError("Debes indicar una contrasena para el archivo .p12")
+        if user.p12_path and not reissue:
+            return user
+
+        ca_key, ca_cert = CertificateAuthorityService.ensure_ca()
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        now = datetime.now(UTC)
+        subject = x509.Name(
+            [
+                x509.NameAttribute(NameOID.COUNTRY_NAME, "MX"),
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Casa Monarca"),
+                x509.NameAttribute(NameOID.COMMON_NAME, user.full_name),
+                x509.NameAttribute(NameOID.EMAIL_ADDRESS, user.email),
+            ]
+        )
+
+        certificate = (
+            x509.CertificateBuilder()
+            .subject_name(subject)
+            .issuer_name(ca_cert.subject)
+            .public_key(private_key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(minutes=5))
+            .not_valid_after(now + timedelta(days=365))
+            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .add_extension(
+                x509.KeyUsage(
+                    digital_signature=True,
+                    key_encipherment=True,
+                    content_commitment=False,
+                    data_encipherment=False,
+                    key_agreement=False,
+                    key_cert_sign=False,
+                    crl_sign=False,
+                    encipher_only=False,
+                    decipher_only=False,
+                ),
+                critical=True,
+            )
+            .add_extension(
+                x509.ExtendedKeyUsage(
+                    [ExtendedKeyUsageOID.CLIENT_AUTH, ExtendedKeyUsageOID.EMAIL_PROTECTION]
+                ),
+                critical=False,
+            )
+            .add_extension(x509.SubjectAlternativeName([x509.RFC822Name(user.email)]), critical=False)
+            .sign(private_key=ca_key, algorithm=hashes.SHA256())
+        )
+
+        p12_bytes = pkcs12.serialize_key_and_certificates(
+            name=user.email.encode(),
+            key=private_key,
+            cert=certificate,
+            cas=[ca_cert],
+            encryption_algorithm=serialization.BestAvailableEncryption(password.encode()),
+        )
+
+        CertificateAuthorityService.user_dir.mkdir(parents=True, exist_ok=True)
+        safe_email = user.email.replace("@", "_at_").replace(".", "_")
+        p12_path = (CertificateAuthorityService.user_dir / f"user-{user.id}-{safe_email}.p12").resolve()
+        p12_path.write_bytes(p12_bytes)
+
+        user.certificate_serial = format(certificate.serial_number, "x")
+        user.certificate_pem = certificate.public_bytes(serialization.Encoding.PEM).decode()
+        user.certificate_not_before = certificate.not_valid_before_utc.replace(tzinfo=None)
+        user.certificate_not_after = certificate.not_valid_after_utc.replace(tzinfo=None)
+        user.p12_path = str(p12_path)
+        user.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(user)
+        return user
+
+
 class BootstrapService:
     @staticmethod
     def seed(db: Session) -> None:
+        SchemaService.ensure_user_certificate_columns()
+        CertificateAuthorityService.ensure_ca()
+
         roles = list(db.scalars(select(Role)).all())
         if not roles:
             role_by_code: dict[str, Role] = {}
@@ -178,7 +356,15 @@ class AuthorizationService:
 
 class UserService:
     @staticmethod
-    def create_user(db: Session, *, email: str, full_name: str, role_id: int, end_date=None) -> User:
+    def create_user(
+        db: Session,
+        *,
+        email: str,
+        full_name: str,
+        role_id: int,
+        end_date=None,
+        p12_password: str,
+    ) -> User:
         user = User(
             email=email.lower(),
             full_name=full_name,
@@ -189,7 +375,12 @@ class UserService:
         db.add(user)
         db.commit()
         db.refresh(user)
-        return user
+        try:
+            return CertificateService.issue_for_user(db, user, p12_password)
+        except Exception:
+            db.delete(user)
+            db.commit()
+            raise
 
     @staticmethod
     def get_user(db: Session, user_id: int) -> User | None:

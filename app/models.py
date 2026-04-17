@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, Enum, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -26,6 +26,11 @@ class User(Base):
         nullable=False,
         default="pending",
     )
+    certificate_serial: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    certificate_pem: Mapped[str | None] = mapped_column(Text, nullable=True)
+    certificate_not_before: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    certificate_not_after: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    p12_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
     end_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

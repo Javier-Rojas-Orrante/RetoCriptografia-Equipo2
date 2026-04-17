@@ -19,6 +19,9 @@ class UserOut(BaseModel):
     full_name: str
     role_id: int
     status: str
+    certificate_serial: str | None
+    certificate_not_before: datetime | None
+    certificate_not_after: datetime | None
     end_date: datetime | None
     created_at: datetime
     updated_at: datetime
