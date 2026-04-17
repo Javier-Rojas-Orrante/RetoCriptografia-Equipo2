@@ -14,7 +14,6 @@ Version minima para demostrar funcionamiento con interfaz web.
 
 ## Como correrlo
 
-1. Copia [.env.example](/Users/javier/Documents/New%20project/.env.example) a `.env` si quieres cambiar puerto o ruta de base.
 2. Instala dependencias con `pip install -e .`.
 3. Ejecuta `uvicorn app.main:app --reload`.
 4. Abre [http://127.0.0.1:8000](http://127.0.0.1:8000).
