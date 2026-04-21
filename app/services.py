@@ -2,8 +2,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from cryptography import x509
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.serialization import pkcs12
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from sqlalchemy import inspect, select, text
@@ -291,6 +292,103 @@ class CertificateService:
         return _certificate_summary(certificate, user.certificate_pem)
 
 
+class SignatureLoginService:
+    @staticmethod
+    def _certificate_has_user_email(certificate: x509.Certificate, email: str) -> bool:
+        try:
+            san = certificate.extensions.get_extension_for_class(x509.SubjectAlternativeName)
+            if email in san.value.get_values_for_type(x509.RFC822Name):
+                return True
+        except x509.ExtensionNotFound:
+            pass
+
+        subject_emails = certificate.subject.get_attributes_for_oid(NameOID.EMAIL_ADDRESS)
+        return any(attribute.value == email for attribute in subject_emails)
+
+    @staticmethod
+    def _verify_ca_signature(certificate: x509.Certificate, ca_certificate: x509.Certificate) -> None:
+        ca_public_key = ca_certificate.public_key()
+        if not isinstance(ca_public_key, rsa.RSAPublicKey):
+            raise ValueError("La CA interna no usa una llave RSA valida")
+
+        ca_public_key.verify(
+            certificate.signature,
+            certificate.tbs_certificate_bytes,
+            padding.PKCS1v15(),
+            certificate.signature_hash_algorithm,
+        )
+
+    @staticmethod
+    def authenticate_with_p12(db: Session, *, email: str, p12_bytes: bytes, password: str) -> tuple[User, dict]:
+        clean_email = email.strip().lower()
+        user = db.scalar(select(User).options(joinedload(User.role)).where(User.email == clean_email))
+        if not user:
+            raise ValueError("Usuario no registrado")
+        if user.status != "active":
+            raise ValueError(f"La cuenta no esta activa: {user.status}")
+        if not user.certificate_serial:
+            raise ValueError("El usuario no tiene certificado emitido")
+
+        try:
+            private_key, certificate, _extra = pkcs12.load_key_and_certificates(
+                p12_bytes,
+                password.encode(),
+            )
+        except Exception as exc:
+            raise ValueError("No se pudo abrir el .p12 con esa contrasena") from exc
+
+        if private_key is None or certificate is None:
+            raise ValueError("El .p12 no contiene llave privada y certificado")
+        if not isinstance(private_key, rsa.RSAPrivateKey):
+            raise ValueError("El .p12 no contiene una llave privada RSA")
+        if not isinstance(certificate.public_key(), rsa.RSAPublicKey):
+            raise ValueError("El certificado no contiene una llave publica RSA")
+
+        if format(certificate.serial_number, "x") != user.certificate_serial:
+            raise ValueError("El certificado no corresponde al usuario registrado")
+
+        if not SignatureLoginService._certificate_has_user_email(certificate, user.email):
+            raise ValueError("El correo del certificado no coincide con el usuario")
+
+        now = datetime.now(UTC)
+        if certificate.not_valid_before_utc > now or certificate.not_valid_after_utc < now:
+            raise ValueError("El certificado esta fuera de vigencia")
+
+        _ca_key, ca_certificate = CertificateAuthorityService.ensure_ca()
+        try:
+            SignatureLoginService._verify_ca_signature(certificate, ca_certificate)
+        except InvalidSignature as exc:
+            raise ValueError("La CA interna no reconoce la firma del certificado") from exc
+
+        challenge = f"login:{user.id}:{user.email}:{now.isoformat()}".encode()
+        signature = private_key.sign(
+            challenge,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH,
+            ),
+            hashes.SHA256(),
+        )
+
+        certificate.public_key().verify(
+            signature,
+            challenge,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH,
+            ),
+            hashes.SHA256(),
+        )
+
+        proof = {
+            "challenge": challenge.decode(),
+            "signature_preview": signature.hex()[:48],
+            "signature_algorithm": "RSA-PSS-SHA256",
+            "certificate_signature_algorithm": certificate.signature_algorithm_oid._name,
+        }
+        return user, proof
+
+
 class BootstrapService:
     @staticmethod
     def seed(db: Session) -> None:
@@ -407,9 +505,16 @@ class UserService:
         end_date=None,
         p12_password: str,
     ) -> User:
+        clean_email = email.strip().lower()
+        clean_name = full_name.strip()
+        if not clean_name:
+            raise ValueError("Debes indicar el nombre completo")
+        if db.scalar(select(User).where(User.email == clean_email)):
+            raise ValueError("Ya existe un usuario con ese correo")
+
         user = User(
-            email=email.lower(),
-            full_name=full_name,
+            email=clean_email,
+            full_name=clean_name,
             role_id=role_id,
             status="pending",
             end_date=end_date,

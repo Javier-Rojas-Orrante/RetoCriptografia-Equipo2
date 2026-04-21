@@ -11,6 +11,8 @@ Version minima para demostrar funcionamiento con interfaz web.
 - Registra auditoria basica.
 - Emite certificados X.509 firmados por una CA interna.
 - Entrega la llave privada en un `.p12` protegido con contrasena.
+- Permite login demo con `.p12` y firma de reto.
+- Muestra vistas distintas por rol.
 
 ## Como correrlo
 
@@ -24,6 +26,9 @@ Tambien crea una CA interna local y guarda los certificados emitidos en `generat
 ## Rutas utiles
 
 - `GET /`
+- `GET /login`
+- `GET /portal?as_user=1`
+- `GET /admin/register?as_user=1`
 - `GET /health`
 - `GET /api/me?as_user=1`
 - `GET /api/users?as_user=1`
