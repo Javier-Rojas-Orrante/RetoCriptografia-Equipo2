@@ -33,7 +33,7 @@ Flujo general:
 2. Se crean tablas si no existen.
 3. Se insertan roles, permisos y usuarios demo si la base esta vacia.
 4. Se crea una autoridad certificadora interna si no existe.
-5. La UI se sirve desde `GET /`.
+5. La pantalla inicial de login se sirve desde `GET /`.
 
 ## 3. Componentes principales
 
@@ -146,10 +146,13 @@ Eso permite probar la UI sin carga manual.
 
 La demo mantiene dos entradas para que sea facil mostrar el sistema:
 
-- Dashboard tecnico: `GET /`, donde se puede escoger un actor con `as_user`.
-- Login demostrativo: `GET /login`, donde el usuario sube su `.p12` y escribe la contrasena.
+- Login inicial: `GET /`, donde el usuario sube su `.p12` y escribe la contrasena.
+- Login alternativo: `GET /login`, misma pantalla que `/`.
+- Dashboard tecnico: `GET /dashboard`, disponible solo para administrador activo.
 
 El dashboard sigue siendo util para presentar administracion y pruebas rapidas. El login con `.p12` demuestra la parte criptografica estilo e.firma.
+Para pruebas rapidas, el usuario `admin` con contrasena `admin` entra como administrador sin certificado.
+Si un usuario no activo o no administrador intenta abrir el dashboard, el backend aplica su vista de rol en lugar de mostrar el panel administrativo.
 
 ## 6.1 Dashboard tecnico
 
@@ -317,6 +320,7 @@ Muestra los mismos datos, pero para la autoridad certificadora interna.
 La UI principal esta en:
 
 - `GET /`
+- `GET /dashboard`
 
 Desde ahi se puede:
 
@@ -324,6 +328,7 @@ Desde ahi se puede:
 - ver permisos efectivos,
 - crear usuarios,
 - activar o revocar cuentas,
+- cambiar fecha de expiracion,
 - cambiar rol,
 - emitir certificados,
 - descargar `.p12`,
@@ -349,6 +354,7 @@ Desde ahi se puede:
 
 - `POST /ui/users`
 - `POST /ui/users/{user_id}/status`
+- `POST /ui/users/{user_id}/expiration`
 - `POST /ui/users/{user_id}/role`
 - `POST /ui/users/{user_id}/certificate`
 

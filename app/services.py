@@ -563,6 +563,19 @@ class UserService:
         return user
 
     @staticmethod
+    def update_expiration(db: Session, user: User, end_date: datetime) -> User:
+        if end_date <= datetime.utcnow():
+            raise ValueError("La nueva fecha de expiracion debe ser futura")
+
+        user.end_date = end_date
+        if user.status == "expired":
+            user.status = "active"
+        user.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(user)
+        return user
+
+    @staticmethod
     def change_role(db: Session, user: User, role_id: int) -> User:
         user.role_id = role_id
         user.updated_at = datetime.utcnow()

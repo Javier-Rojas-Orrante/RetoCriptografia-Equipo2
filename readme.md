@@ -12,6 +12,7 @@ Version minima para demostrar funcionamiento con interfaz web.
 - Emite certificados X.509 firmados por una CA interna.
 - Entrega la llave privada en un `.p12` protegido con contrasena.
 - Permite login demo con `.p12` y firma de reto.
+- Permite bypass de prueba con `admin` / `admin` sin certificado.
 - Muestra vistas distintas por rol.
 
 ## Como correrlo
@@ -27,6 +28,7 @@ Tambien crea una CA interna local y guarda los certificados emitidos en `generat
 
 - `GET /`
 - `GET /login`
+- `GET /dashboard` solo administrador activo
 - `GET /portal?as_user=1`
 - `GET /admin/register?as_user=1`
 - `GET /health`

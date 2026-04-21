@@ -65,7 +65,11 @@ def require_actor_permission(db: Session, actor, resource: str, action: str) -> 
 
 
 def redirect_home(actor_id: int) -> RedirectResponse:
-    return RedirectResponse(url=f"/?{urlencode({'as_user': actor_id})}", status_code=303)
+    return RedirectResponse(url=f"/dashboard?{urlencode({'as_user': actor_id})}", status_code=303)
+
+
+def is_active_admin(actor) -> bool:
+    return actor.status == "active" and actor.role.code == "ADMIN"
 
 
 def render_certificate_page(title: str, summary: dict, back_href: str) -> str:
@@ -185,15 +189,14 @@ def render_login_page(error: str | None = None) -> str:
     body = f"""
     <section class="panel">
       <h1>Login con certificado</h1>
-      <p class="muted">Demo estilo e.firma: el usuario sube su archivo `.p12` y escribe su contrasena. El backend valida el certificado y prueba posesion de la llave privada firmando un reto.</p>
+      <p class="muted">Demo estilo e.firma: el usuario sube su archivo `.p12` y escribe su contrasena. Para pruebas, tambien puedes entrar con usuario <code>admin</code> y contrasena <code>admin</code> sin certificado.</p>
       {error_html}
       <form method="post" action="/login" enctype="multipart/form-data" class="stack">
-        <label>Correo registrado<input name="email" type="email" required></label>
-        <label>Archivo .p12<input name="p12_file" type="file" accept=".p12,.pfx" required></label>
-        <label>Contrasena del .p12<input name="p12_password" type="password" required></label>
+        <label>Correo registrado o usuario demo<input name="email" required></label>
+        <label>Archivo .p12<input name="p12_file" type="file" accept=".p12,.pfx"></label>
+        <label>Contrasena del .p12 o demo<input name="p12_password" type="password" required></label>
         <button type="submit">Entrar</button>
       </form>
-      <p><a href="/">Volver al panel demo</a></p>
     </section>
     """
     return base_page("Login con certificado", body)
@@ -216,7 +219,7 @@ def render_admin_register_page(actor, roles, error: str | None = None) -> str:
         <label>Contrasena inicial del .p12<input name="p12_password" type="password" required></label>
         <button type="submit">Crear usuario y firma</button>
       </form>
-      <p><a href="/?as_user={actor.id}">Volver</a></p>
+      <p><a href="/dashboard?as_user={actor.id}">Volver</a></p>
     </section>
     """
     return base_page("Otorgar registro", body)
@@ -235,7 +238,7 @@ def render_portal_page(actor, permissions, logs, verified: bool = False) -> str:
             <h2>Administracion</h2>
             <p>Puedes otorgar registros, emitir certificados, cambiar roles y revisar auditoria.</p>
             <p><a href="/admin/register?as_user={actor.id}">Otorgar registro</a></p>
-            <p><a href="/?as_user={actor.id}">Abrir panel administrador</a></p>
+            <p><a href="/dashboard?as_user={actor.id}">Abrir panel administrador</a></p>
           </article>
           <article class="panel">
             <h2>Auditoria reciente</h2>
@@ -308,42 +311,47 @@ def render_dashboard(actor, users, roles, permissions, logs) -> str:
     can_create = any(item["resource"] == "users" and item["action"] == "create" for item in permissions)
     can_activate = any(item["resource"] == "users" and item["action"] == "activate" for item in permissions)
     can_revoke = any(item["resource"] == "users" and item["action"] == "revoke" for item in permissions)
-    can_reactivate = any(item["resource"] == "users" and item["action"] == "reactivate" for item in permissions)
     can_change_role = any(item["resource"] == "users" and item["action"] == "change_role" for item in permissions)
 
-    rows = []
+    user_cards = []
     for user in users:
         status_forms = []
+        if can_activate and user.status in {"pending", "revoked"}:
+            status_forms.append(
+                f"""
+                <form method="post" action="/ui/users/{user.id}/status">
+              <input type="hidden" name="actor_id" value="{actor.id}">
+              <input type="hidden" name="status" value="active">
+              <button type="submit" class="compact-button">Activar</button>
+            </form>
+            """
+        )
+        if can_revoke and user.status != "revoked":
+            status_forms.append(
+                f"""
+                <form method="post" action="/ui/users/{user.id}/status">
+              <input type="hidden" name="actor_id" value="{actor.id}">
+              <input type="hidden" name="status" value="revoked">
+              <button type="submit" class="compact-button">Revocar</button>
+            </form>
+            """
+        )
+
+        expiration_text = (
+            escape(user.end_date.isoformat(sep=" ", timespec="minutes"))
+            if user.end_date
+            else "sin vencimiento"
+        )
+        expiration_form = ""
         if can_activate:
-            status_forms.append(
-                f"""
-                <form method="post" action="/ui/users/{user.id}/status">
-                  <input type="hidden" name="actor_id" value="{actor.id}">
-                  <input type="hidden" name="status" value="active">
-                  <button type="submit">Activar</button>
-                </form>
-                """
-            )
-        if can_revoke:
-            status_forms.append(
-                f"""
-                <form method="post" action="/ui/users/{user.id}/status">
-                  <input type="hidden" name="actor_id" value="{actor.id}">
-                  <input type="hidden" name="status" value="revoked">
-                  <button type="submit">Revocar</button>
-                </form>
-                """
-            )
-        if can_reactivate:
-            status_forms.append(
-                f"""
-                <form method="post" action="/ui/users/{user.id}/status">
-                  <input type="hidden" name="actor_id" value="{actor.id}">
-                  <input type="hidden" name="status" value="active">
-                  <button type="submit">Reactivar</button>
-                </form>
-                """
-            )
+            expiration_value = user.end_date.strftime("%Y-%m-%dT%H:%M") if user.end_date else ""
+            expiration_form = f"""
+            <form method="post" action="/ui/users/{user.id}/expiration" class="inline-form expiration-form">
+              <input type="hidden" name="actor_id" value="{actor.id}">
+              <input type="datetime-local" name="end_date" value="{expiration_value}" required>
+              <button type="submit">Guardar vigencia</button>
+            </form>
+            """
 
         role_form = "rol fijo"
         if can_change_role:
@@ -353,7 +361,7 @@ def render_dashboard(actor, users, roles, permissions, logs) -> str:
               <select name="role_id">
                 {''.join(f"<option value='{role.id}' {'selected' if role.id == user.role_id else ''}>{escape(role.name)}</option>" for role in roles)}
               </select>
-              <button type="submit">Cambiar rol</button>
+              <button type="submit">Guardar rol</button>
             </form>
             """
 
@@ -364,9 +372,9 @@ def render_dashboard(actor, users, roles, permissions, logs) -> str:
               <div>Serial: <code>{escape(user.certificate_serial)}</code></div>
               <div>Vence: {escape(user.certificate_not_after.isoformat(sep=' ', timespec='minutes')) if user.certificate_not_after else 'n/a'}</div>
               <div class="download-links">
-                <a href="/ui/users/{user.id}/certificate/view?as_user={actor.id}">Ver certificado</a>
-                <a href="/ui/users/{user.id}/certificate.pem?as_user={actor.id}">Certificado PEM</a>
-                <a href="/ui/users/{user.id}/certificate.p12?as_user={actor.id}">Descargar .p12</a>
+                <a href="/ui/users/{user.id}/certificate/view?as_user={actor.id}">Ver</a>
+                <a href="/ui/users/{user.id}/certificate.pem?as_user={actor.id}">PEM</a>
+                <a href="/ui/users/{user.id}/certificate.p12?as_user={actor.id}">.p12</a>
               </div>
             </div>
             """
@@ -379,18 +387,48 @@ def render_dashboard(actor, users, roles, permissions, logs) -> str:
             </form>
             """
 
-        rows.append(
+        account_actions = "".join(status_forms) or "<span class='muted'>Sin acciones</span>"
+        user_cards.append(
             f"""
-            <tr>
-              <td>{escape(user.full_name)}</td>
-              <td>{escape(user.email)}</td>
-              <td>{escape(user.role.name)}</td>
-              <td><span class="status status-{escape(user.status)}">{escape(user.status)}</span></td>
-              <td>{escape(user.end_date.isoformat(sep=' ', timespec='minutes')) if user.end_date else 'sin vencimiento'}</td>
-              <td class="actions">{''.join(status_forms) or 'sin acciones'}</td>
-              <td>{role_form}</td>
-              <td>{certificate_block}</td>
-            </tr>
+            <article class="user-card">
+              <header class="user-card-header">
+                <div>
+                  <h3>{escape(user.full_name)}</h3>
+                  <p>{escape(user.email)}</p>
+                </div>
+                <span class="status status-{escape(user.status)}">{escape(user.status)}</span>
+              </header>
+
+              <div class="user-summary">
+                <div class="fact">
+                  <span class="label">Rol</span>
+                  <strong>{escape(user.role.name)}</strong>
+                </div>
+                <div class="fact">
+                  <span class="label">Expira</span>
+                  <strong>{expiration_text}</strong>
+                </div>
+              </div>
+
+              <div class="user-controls">
+                <section class="control-panel">
+                  <h4>Cuenta</h4>
+                  <div class="button-row">{account_actions}</div>
+                </section>
+                <section class="control-panel">
+                  <h4>Vigencia</h4>
+                  {expiration_form or "<span class='muted'>Sin permiso</span>"}
+                </section>
+                <section class="control-panel">
+                  <h4>Rol</h4>
+                  {role_form}
+                </section>
+                <section class="control-panel certificate-section">
+                  <h4>Certificado</h4>
+                  {certificate_block}
+                </section>
+              </div>
+            </article>
             """
         )
 
@@ -445,24 +483,39 @@ def render_dashboard(actor, users, roles, permissions, logs) -> str:
           label {{ display: grid; gap: 6px; font-size: 14px; }}
           input, select, button {{ font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid #c9bca9; }}
           button {{ background: var(--accent); color: #fff; border: none; cursor: pointer; }}
-          table {{ width: 100%; border-collapse: collapse; }}
-          th, td {{ border-bottom: 1px solid #efe4d3; padding: 12px 10px; vertical-align: top; text-align: left; }}
           .status {{ display: inline-block; padding: 4px 10px; border-radius: 999px; font-weight: 700; font-size: 12px; }}
           .status-active {{ background: #ddf3e4; color: var(--ok); }}
           .status-pending {{ background: #fff0dc; color: var(--warn); }}
           .status-revoked, .status-expired {{ background: #f8dfdf; color: var(--bad); }}
-          .actions form {{ margin-bottom: 8px; }}
           .inline-form {{ display: grid; gap: 8px; }}
+          .inline-form input, .inline-form select, .inline-form button {{ min-width: 0; width: 100%; }}
+          .users-grid {{ display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }}
+          .user-card {{ display: grid; gap: 14px; min-width: 0; background: #fffaf1; border: 1px solid #eadcc8; border-radius: 18px; padding: 16px; }}
+          .user-card-header {{ display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; }}
+          .user-card-header h3 {{ margin: 0; font-size: 22px; line-height: 1.05; }}
+          .user-card-header p {{ margin: 6px 0 0; overflow-wrap: anywhere; }}
+          .user-summary {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }}
+          .fact {{ min-width: 0; background: #f6efe2; border-radius: 14px; padding: 10px 12px; overflow-wrap: anywhere; }}
+          .label {{ display: block; margin-bottom: 3px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.65; }}
+          .user-controls {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }}
+          .control-panel {{ min-width: 0; border-top: 1px solid #efe4d3; padding-top: 10px; }}
+          .control-panel h4 {{ margin: 0 0 8px; font-size: 14px; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.72; }}
+          .button-row {{ display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }}
+          .button-row form {{ margin: 0; }}
+          .compact-button {{ padding: 8px 12px; }}
+          .expiration-form input {{ font-size: 15px; }}
           .certificate-box {{ display: grid; gap: 8px; }}
+          .certificate-section {{ grid-column: 1 / -1; }}
+          .certificate-box code {{ display: block; overflow-wrap: anywhere; }}
           .download-links {{ display: flex; flex-wrap: wrap; gap: 10px; }}
           .download-links a {{ color: var(--accent); text-decoration: none; font-weight: 700; }}
           .download-links a:hover {{ text-decoration: underline; }}
           code {{ word-break: break-all; }}
           ul {{ margin: 0; padding-left: 18px; }}
           @media (max-width: 760px) {{
-            table, thead, tbody, tr, th, td {{ display: block; }}
-            thead {{ display: none; }}
-            td {{ padding: 10px 0; }}
+            .users-grid {{ grid-template-columns: 1fr; }}
+            .user-summary, .user-controls {{ grid-template-columns: 1fr; }}
+            .user-card-header {{ align-items: flex-start; }}
           }}
         </style>
       </head>
@@ -471,14 +524,14 @@ def render_dashboard(actor, users, roles, permissions, logs) -> str:
           <section class="hero">
             <h1>Gestor de identidades demo</h1>
             <p>Version minima para demostrar altas, roles, revocacion, expiracion, bitacora y emision de certificados X.509 firmados por una CA interna.</p>
-            <form method="get" action="/" class="stack" style="max-width: 360px;">
+            <form method="get" action="/dashboard" class="stack" style="max-width: 360px;">
               <label>Actuar como
                 <select name="as_user">{actor_options}</select>
               </label>
               <button type="submit">Cambiar usuario actual</button>
             </form>
             <div class="download-links" style="margin-top: 14px;">
-              <a href="/login">Login con certificado</a>
+              <a href="/">Login con certificado</a>
               <a href="/portal?as_user={actor.id}">Vista de rol</a>
               <a href="/admin/register?as_user={actor.id}">Otorgar registro</a>
             </div>
@@ -512,21 +565,7 @@ def render_dashboard(actor, users, roles, permissions, logs) -> str:
 
           <section class="panel">
             <h2>Usuarios</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Nombre</th>
-                  <th>Correo</th>
-                  <th>Rol</th>
-                  <th>Estado</th>
-                  <th>Expira</th>
-                  <th>Cuenta</th>
-                  <th>Rol</th>
-                  <th>Certificado</th>
-                </tr>
-              </thead>
-              <tbody>{''.join(rows)}</tbody>
-            </table>
+            <div class="users-grid">{''.join(user_cards)}</div>
           </section>
 
           <section class="panel">
@@ -539,6 +578,7 @@ def render_dashboard(actor, users, roles, permissions, logs) -> str:
     """
 
 
+@app.get("/", response_class=HTMLResponse)
 @app.get("/login", response_class=HTMLResponse)
 def login_page():
     return HTMLResponse(render_login_page())
@@ -548,11 +588,33 @@ def login_page():
 async def login_with_certificate(
     email: str = Form(...),
     p12_password: str = Form(...),
-    p12_file: UploadFile = File(...),
+    p12_file: UploadFile | None = File(default=None),
     db: Session = Depends(get_db),
 ):
+    if email.strip().lower() == "admin" and p12_password == "admin":
+        admin = get_actor_or_404(db, None)
+        if not is_active_admin(admin):
+            return HTMLResponse(render_login_page("El administrador demo no esta activo"), status_code=403)
+
+        AuditService.log(
+            db,
+            event_type="login_admin_bypass",
+            actor_user_id=admin.id,
+            target_user_id=admin.id,
+            action="login_with_demo_password",
+            resource="auth",
+            result="success",
+            metadata={"warning": "demo bypass without certificate"},
+        )
+        return RedirectResponse(url=f"/dashboard?{urlencode({'as_user': admin.id})}", status_code=303)
+
+    if p12_file is None:
+        return HTMLResponse(render_login_page("Debes subir un .p12 o usar admin/admin para pruebas"), status_code=400)
+
     try:
         p12_bytes = await p12_file.read()
+        if not p12_bytes:
+            raise ValueError("Debes subir un archivo .p12")
         user, proof = SignatureLoginService.authenticate_with_p12(
             db,
             email=email,
@@ -668,9 +730,17 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(as_user: int | None = Query(default=None), db: Session = Depends(get_db)):
+    if as_user is None:
+        return RedirectResponse(url="/", status_code=303)
+
     actor = get_actor_or_404(db, as_user)
+    if not is_active_admin(actor):
+        permissions = AuthorizationService.get_permissions(db, actor)
+        logs = AuditService.list_recent(db)
+        return HTMLResponse(render_portal_page(actor, permissions, logs))
+
     users = UserService.list_users(db)
     roles = UserService.list_roles(db)
     permissions = AuthorizationService.get_permissions(db, actor)
@@ -782,6 +852,40 @@ def ui_change_status(
     return redirect_home(actor.id)
 
 
+@app.post("/ui/users/{user_id}/expiration")
+def ui_change_expiration(
+    user_id: int,
+    actor_id: int = Form(...),
+    end_date: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    actor = get_actor_or_404(db, actor_id)
+    target = UserService.get_user(db, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    require_actor_permission(db, actor, "users", "activate")
+    try:
+        parsed_end_date = parse_end_date(end_date)
+        if parsed_end_date is None:
+            raise ValueError("Debes indicar una nueva fecha de expiracion")
+        updated = UserService.update_expiration(db, target, parsed_end_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    AuditService.log(
+        db,
+        event_type="expiration_changed",
+        actor_user_id=actor.id,
+        target_user_id=updated.id,
+        action="change_expiration",
+        resource="users",
+        result="success",
+        metadata={"end_date": updated.end_date.isoformat() if updated.end_date else None},
+    )
+    return redirect_home(actor.id)
+
+
 @app.post("/ui/users/{user_id}/role")
 def ui_change_role(
     user_id: int,
@@ -874,7 +978,7 @@ def view_user_certificate(user_id: int, as_user: int | None = Query(default=None
     if not summary:
         raise HTTPException(status_code=404, detail="Certificate not found")
 
-    back_href = f"/?{urlencode({'as_user': actor.id})}"
+    back_href = f"/dashboard?{urlencode({'as_user': actor.id})}"
     return HTMLResponse(render_certificate_page(f"Certificado de {user.full_name}", summary, back_href))
 
 

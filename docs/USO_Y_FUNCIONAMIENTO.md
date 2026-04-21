@@ -27,16 +27,18 @@ Esta version es una demo local muy simple. La meta es mostrar que el control de 
 2. SQLAlchemy crea las tablas automaticamente.
 3. Se insertan roles, permisos y usuarios demo si la base esta vacia.
 4. Si no existe, se crea una autoridad certificadora interna.
-5. El dashboard se sirve desde `GET /`.
+5. La pantalla inicial de login se sirve desde `GET /`.
 
 ## Flujo de la interfaz
 
-1. Puedes entrar al dashboard demo en `GET /` y seleccionar con que usuario actuar.
-2. Tambien puedes usar `GET /login` para entrar con correo, archivo `.p12` y contrasena.
-3. La app calcula permisos con base en el rol.
-4. Si es administrador, puede otorgar registros, activar, revocar, cambiar rol y emitir certificados.
-5. Al crear usuario, el backend genera su llave privada, certificado X.509 y paquete `.p12`.
-6. Cada accion deja un evento en la bitacora.
+1. Entras por `GET /`, que muestra la pantalla de login.
+2. Puedes autenticarte con correo, archivo `.p12` y contrasena.
+3. Para pruebas rapidas puedes usar `admin` / `admin` sin certificado.
+4. La app calcula permisos con base en el rol.
+5. Si es administrador, puede otorgar registros, activar, revocar, cambiar expiracion, cambiar rol y emitir certificados.
+6. Al crear usuario, el backend genera su llave privada, certificado X.509 y paquete `.p12`.
+7. Cada accion deja un evento en la bitacora.
+8. Si un usuario no es administrador activo, aunque intente abrir `/dashboard`, se le muestra su vista de rol.
 
 ## Usuarios demo iniciales
 
@@ -79,4 +81,11 @@ Luego abre `http://127.0.0.1:8000`.
 - `GET /login`: pantalla estilo e.firma para subir `.p12` y contrasena.
 - `GET /portal?as_user=ID`: portal del usuario con contenido segun rol.
 - `GET /admin/register?as_user=ID`: pantalla de administrador para otorgar un registro, emitir certificado y entregar `.p12`.
-- `GET /`: dashboard tecnico de la demo.
+- `GET /`: pantalla inicial de login.
+- `GET /dashboard`: dashboard tecnico solo para administrador activo.
+
+## Acciones de cuenta en el panel admin
+
+- `Activar`: sirve para usuarios nuevos o revocados.
+- `Revocar`: bloquea el acceso del usuario.
+- `Cambiar fecha`: actualiza `end_date`; si el usuario estaba `expired` y la nueva fecha es futura, vuelve a quedar `active`.
