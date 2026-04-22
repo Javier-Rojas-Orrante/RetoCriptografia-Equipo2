@@ -31,6 +31,7 @@ class User(Base):
     certificate_not_before: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     certificate_not_after: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     p12_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     end_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

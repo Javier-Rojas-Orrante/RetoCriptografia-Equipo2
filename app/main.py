@@ -18,8 +18,10 @@ from app.services import (
     BootstrapService,
     CertificateAuthorityService,
     CertificateService,
+    PasswordLoginService,
     SignatureLoginService,
     UserService,
+    role_requires_crypto,
 )
 
 
@@ -188,18 +190,18 @@ def render_login_page(error: str | None = None) -> str:
     error_html = f"<div class='error'>{escape(error)}</div>" if error else ""
     body = f"""
     <section class="panel">
-      <h1>Login con certificado</h1>
-      <p class="muted">Demo estilo e.firma: el usuario sube su archivo `.p12` y escribe su contrasena. Para pruebas, tambien puedes entrar con usuario <code>admin</code> y contrasena <code>admin</code> sin certificado.</p>
+      <h1>Login</h1>
+      <p class="muted">Administradores y coordinadores entran con `.p12`; voluntarios entran solo con correo y contrasena. Para pruebas, tambien puedes usar <code>admin</code> / <code>admin</code>.</p>
       {error_html}
       <form method="post" action="/login" enctype="multipart/form-data" class="stack">
-        <label>Correo registrado o usuario demo<input name="email" required></label>
-        <label>Archivo .p12<input name="p12_file" type="file" accept=".p12,.pfx"></label>
-        <label>Contrasena del .p12 o demo<input name="p12_password" type="password" required></label>
+        <label>Correo o usuario demo<input name="email" required></label>
+        <label>Archivo .p12 para admin/coordinador<input name="p12_file" type="file" accept=".p12,.pfx"></label>
+        <label>Contrasena<input name="p12_password" type="password" required></label>
         <button type="submit">Entrar</button>
       </form>
     </section>
     """
-    return base_page("Login con certificado", body)
+    return base_page("Login", body)
 
 
 def render_admin_register_page(actor, roles, error: str | None = None) -> str:
@@ -208,16 +210,16 @@ def render_admin_register_page(actor, roles, error: str | None = None) -> str:
     body = f"""
     <section class="panel">
       <h1>Otorgar registro</h1>
-      <p class="muted">Administrador actual: <strong>{escape(actor.full_name)}</strong>. Al crear el usuario se emite automaticamente su certificado X.509 y su `.p12`.</p>
+      <p class="muted">Administrador actual: <strong>{escape(actor.full_name)}</strong>. Administradores y coordinadores reciben `.p12`; voluntarios reciben solo contrasena local.</p>
       {error_html}
       <form method="post" action="/admin/register" class="stack">
         <input type="hidden" name="actor_id" value="{actor.id}">
         <label>Nombre completo<input name="full_name" required></label>
         <label>Correo<input name="email" type="email" required></label>
         <label>Rol<select name="role_id">{role_options}</select></label>
-        <label>Expira opcionalmente<input name="end_date" type="datetime-local"></label>
-        <label>Contrasena inicial del .p12<input name="p12_password" type="password" required></label>
-        <button type="submit">Crear usuario y firma</button>
+        <label>Fecha de expiracion<input name="end_date" type="datetime-local"></label>
+        <label>Contrasena de usuario o .p12<input name="p12_password" type="password" required></label>
+        <button type="submit">Crear usuario</button>
       </form>
       <p><a href="/dashboard?as_user={actor.id}">Volver</a></p>
     </section>
@@ -246,37 +248,25 @@ def render_portal_page(actor, permissions, logs, verified: bool = False) -> str:
           </article>
         </div>
         """
-    elif actor.role.code == "HUMANITARIA":
+    elif actor.role.code == "COORDINADOR":
         role_content = """
         <div class="panel">
-          <h2>Vista Humanitaria</h2>
-          <p>Puedes consultar y editar expedientes humanitarios de la demo.</p>
+          <h2>Vista Coordinador</h2>
+          <p>Puedes consultar y editar documentos operativos de la demo.</p>
         </div>
         """
-    elif actor.role.code == "LEGAL_TI":
+    elif actor.role.code == "VOLUNTARIO":
         role_content = """
         <div class="panel">
-          <h2>Vista Legal / TI</h2>
-          <p>Puedes consultar y editar documentos de la demo.</p>
-        </div>
-        """
-    elif actor.role.code == "LECTURA":
-        role_content = """
-        <div class="panel">
-          <h2>Vista de lectura</h2>
-          <p>Puedes consultar informacion, pero no editar registros.</p>
+          <h2>Vista Voluntario</h2>
+          <p>Acceso basico a la informacion visible para voluntarios. No requiere certificado criptografico.</p>
         </div>
         """
     else:
-        role_content = """
-        <div class="panel">
-          <h2>Vista Externa</h2>
-          <p>Acceso limitado a documentos visibles para externos.</p>
-        </div>
-        """
+        role_content = "<div class='error'>Rol no reconocido para esta demo.</div>"
 
     cert_link = ""
-    if actor.certificate_serial:
+    if role_requires_crypto(actor) and actor.certificate_serial:
         cert_link = f"<p><a href='/ui/users/{actor.id}/certificate/view?as_user={actor.id}'>Ver mi certificado</a></p>"
 
     body = f"""
@@ -315,6 +305,7 @@ def render_dashboard(actor, users, roles, permissions, logs) -> str:
 
     user_cards = []
     for user in users:
+        user_uses_crypto = role_requires_crypto(user)
         status_forms = []
         if can_activate and user.status in {"pending", "revoked"}:
             status_forms.append(
@@ -345,10 +336,16 @@ def render_dashboard(actor, users, roles, permissions, logs) -> str:
         expiration_form = ""
         if can_activate:
             expiration_value = user.end_date.strftime("%Y-%m-%dT%H:%M") if user.end_date else ""
+            crypto_password_input = (
+                '<input type="password" name="p12_password" placeholder="Nueva contrasena .p12" required>'
+                if user_uses_crypto
+                else ""
+            )
             expiration_form = f"""
             <form method="post" action="/ui/users/{user.id}/expiration" class="inline-form expiration-form">
               <input type="hidden" name="actor_id" value="{actor.id}">
               <input type="datetime-local" name="end_date" value="{expiration_value}" required>
+              {crypto_password_input}
               <button type="submit">Guardar vigencia</button>
             </form>
             """
@@ -365,8 +362,8 @@ def render_dashboard(actor, users, roles, permissions, logs) -> str:
             </form>
             """
 
-        certificate_block = "sin certificado"
-        if user.certificate_serial and user.p12_path:
+        certificate_block = "Voluntario: no requiere certificado"
+        if user_uses_crypto and user.certificate_serial and user.p12_path:
             certificate_block = f"""
             <div class="certificate-box">
               <div>Serial: <code>{escape(user.certificate_serial)}</code></div>
@@ -378,7 +375,7 @@ def render_dashboard(actor, users, roles, permissions, logs) -> str:
               </div>
             </div>
             """
-        elif can_create:
+        elif user_uses_crypto and can_create:
             certificate_block = f"""
             <form method="post" action="/ui/users/{user.id}/certificate" class="inline-form">
               <input type="hidden" name="actor_id" value="{actor.id}">
@@ -442,9 +439,9 @@ def render_dashboard(actor, users, roles, permissions, logs) -> str:
             <label>Nombre completo<input name="full_name" required></label>
             <label>Correo<input name="email" type="email" required></label>
             <label>Rol<select name="role_id">{create_role_options}</select></label>
-            <label>Expira opcionalmente<input name="end_date" type="datetime-local"></label>
-            <label>Contrasena del .p12<input name="p12_password" type="password" required></label>
-            <button type="submit">Crear usuario y emitir certificado</button>
+            <label>Fecha de expiracion<input name="end_date" type="datetime-local"></label>
+            <label>Contrasena de usuario o .p12<input name="p12_password" type="password" required></label>
+            <button type="submit">Crear usuario</button>
           </form>
         </section>
         """
@@ -531,7 +528,7 @@ def render_dashboard(actor, users, roles, permissions, logs) -> str:
               <button type="submit">Cambiar usuario actual</button>
             </form>
             <div class="download-links" style="margin-top: 14px;">
-              <a href="/">Login con certificado</a>
+              <a href="/">Login</a>
               <a href="/portal?as_user={actor.id}">Vista de rol</a>
               <a href="/admin/register?as_user={actor.id}">Otorgar registro</a>
             </div>
@@ -608,19 +605,31 @@ async def login_with_certificate(
         )
         return RedirectResponse(url=f"/dashboard?{urlencode({'as_user': admin.id})}", status_code=303)
 
-    if p12_file is None:
-        return HTMLResponse(render_login_page("Debes subir un .p12 o usar admin/admin para pruebas"), status_code=400)
-
     try:
-        p12_bytes = await p12_file.read()
-        if not p12_bytes:
-            raise ValueError("Debes subir un archivo .p12")
-        user, proof = SignatureLoginService.authenticate_with_p12(
-            db,
-            email=email,
-            p12_bytes=p12_bytes,
-            password=p12_password,
-        )
+        p12_bytes = b""
+        if p12_file is not None and p12_file.filename:
+            p12_bytes = await p12_file.read()
+
+        if p12_bytes:
+            user, proof = SignatureLoginService.authenticate_with_p12(
+                db,
+                email=email,
+                p12_bytes=p12_bytes,
+                password=p12_password,
+            )
+            AuditService.log(
+                db,
+                event_type="login_signature_verified",
+                actor_user_id=user.id,
+                target_user_id=user.id,
+                action="login_with_p12",
+                resource="auth",
+                result="success",
+                metadata=proof,
+            )
+            return RedirectResponse(url=f"/portal?{urlencode({'as_user': user.id, 'verified': '1'})}", status_code=303)
+
+        user = PasswordLoginService.authenticate_volunteer(db, email=email, password=p12_password)
     except ValueError as exc:
         AuditService.log(
             db,
@@ -634,15 +643,14 @@ async def login_with_certificate(
 
     AuditService.log(
         db,
-        event_type="login_signature_verified",
+        event_type="login_password_verified",
         actor_user_id=user.id,
         target_user_id=user.id,
-        action="login_with_p12",
+        action="login_with_password",
         resource="auth",
         result="success",
-        metadata=proof,
     )
-    return RedirectResponse(url=f"/portal?{urlencode({'as_user': user.id, 'verified': '1'})}", status_code=303)
+    return RedirectResponse(url=f"/portal?{urlencode({'as_user': user.id})}", status_code=303)
 
 
 @app.get("/portal", response_class=HTMLResponse)
@@ -700,7 +708,7 @@ def admin_register_user(
         action="create",
         resource="users",
         result="success",
-        metadata={"source": "admin_register"},
+        metadata={"source": "admin_register", "role": user.role.code},
     )
     AuditService.log(
         db,
@@ -712,16 +720,17 @@ def admin_register_user(
         result="success",
         metadata={"source": "admin_register"},
     )
-    AuditService.log(
-        db,
-        event_type="certificate_issued",
-        actor_user_id=actor.id,
-        target_user_id=user.id,
-        action="issue_certificate",
-        resource="certificates",
-        result="success",
-        metadata={"certificate_serial": user.certificate_serial},
-    )
+    if user.certificate_serial:
+        AuditService.log(
+            db,
+            event_type="certificate_issued",
+            actor_user_id=actor.id,
+            target_user_id=user.id,
+            action="issue_certificate",
+            resource="certificates",
+            result="success",
+            metadata={"certificate_serial": user.certificate_serial},
+        )
     return redirect_home(actor.id)
 
 
@@ -800,18 +809,19 @@ def ui_create_user(
         action="create",
         resource="users",
         result="success",
-        metadata={"certificate_serial": user.certificate_serial},
+        metadata={"certificate_serial": user.certificate_serial, "role": user.role.code},
     )
-    AuditService.log(
-        db,
-        event_type="certificate_issued",
-        actor_user_id=actor.id,
-        target_user_id=user.id,
-        action="issue_certificate",
-        resource="certificates",
-        result="success",
-        metadata={"certificate_serial": user.certificate_serial},
-    )
+    if user.certificate_serial:
+        AuditService.log(
+            db,
+            event_type="certificate_issued",
+            actor_user_id=actor.id,
+            target_user_id=user.id,
+            action="issue_certificate",
+            resource="certificates",
+            result="success",
+            metadata={"certificate_serial": user.certificate_serial},
+        )
     return redirect_home(actor.id)
 
 
@@ -835,8 +845,6 @@ def ui_change_status(
         raise HTTPException(status_code=400, detail="Unsupported status")
 
     resource, action, event_type = config[status]
-    if action == "activate" and target.status == "revoked":
-        resource, action, event_type = ("users", "reactivate", "user_reactivated")
 
     require_actor_permission(db, actor, resource, action)
     updated = UserService.update_status(db, target, status)
@@ -857,6 +865,7 @@ def ui_change_expiration(
     user_id: int,
     actor_id: int = Form(...),
     end_date: str = Form(...),
+    p12_password: str = Form(default=""),
     db: Session = Depends(get_db),
 ):
     actor = get_actor_or_404(db, actor_id)
@@ -869,8 +878,9 @@ def ui_change_expiration(
         parsed_end_date = parse_end_date(end_date)
         if parsed_end_date is None:
             raise ValueError("Debes indicar una nueva fecha de expiracion")
-        updated = UserService.update_expiration(db, target, parsed_end_date)
+        updated = UserService.update_expiration(db, target, parsed_end_date, p12_password)
     except ValueError as exc:
+        db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     AuditService.log(
@@ -881,7 +891,10 @@ def ui_change_expiration(
         action="change_expiration",
         resource="users",
         result="success",
-        metadata={"end_date": updated.end_date.isoformat() if updated.end_date else None},
+        metadata={
+            "end_date": updated.end_date.isoformat() if updated.end_date else None,
+            "certificate_serial": updated.certificate_serial,
+        },
     )
     return redirect_home(actor.id)
 
@@ -899,7 +912,10 @@ def ui_change_role(
         raise HTTPException(status_code=404, detail="User not found")
 
     require_actor_permission(db, actor, "users", "change_role")
-    updated = UserService.change_role(db, target, role_id)
+    try:
+        updated = UserService.change_role(db, target, role_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     AuditService.log(
         db,
         event_type="role_changed",

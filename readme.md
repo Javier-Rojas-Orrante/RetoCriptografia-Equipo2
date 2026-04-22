@@ -12,6 +12,8 @@ Version minima para demostrar funcionamiento con interfaz web.
 - Emite certificados X.509 firmados por una CA interna.
 - Entrega la llave privada en un `.p12` protegido con contrasena.
 - Permite login demo con `.p12` y firma de reto.
+- Permite login de voluntarios con correo y contrasena.
+- Liga la vigencia criptografica al vencimiento del certificado.
 - Permite bypass de prueba con `admin` / `admin` sin certificado.
 - Muestra vistas distintas por rol.
 

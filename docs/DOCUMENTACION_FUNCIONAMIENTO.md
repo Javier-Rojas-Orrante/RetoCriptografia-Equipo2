@@ -14,6 +14,8 @@ La aplicacion demuestra de forma minima estos flujos:
 - emision de certificados X.509 con una CA interna,
 - descarga y visualizacion de certificados desde la interfaz,
 - login demostrativo con `.p12` y firma de reto,
+- login de voluntarios con correo y contrasena,
+- vigencia criptografica ligada a `end_date`,
 - vistas diferentes por rol.
 
 No intenta ser un IAM completo ni una PKI enterprise. Es una demo funcional y mantenible.
@@ -58,6 +60,7 @@ Contiene la logica principal:
 - `CertificateAuthorityService`
 - `CertificateService`
 - `SignatureLoginService`
+- `PasswordLoginService`
 - `AuthorizationService`
 - `UserService`
 
@@ -104,6 +107,7 @@ Campos de certificado usados actualmente:
 - `certificate_not_before`
 - `certificate_not_after`
 - `p12_path`
+- `password_hash`
 
 ## 4.2 Roles y permisos
 
@@ -112,12 +116,11 @@ Cada usuario tiene un solo rol.
 Los roles se cargan desde `ROLE_DEFINITIONS`:
 
 - `ADMIN`
-- `HUMANITARIA`
-- `LEGAL_TI`
-- `LECTURA`
-- `EXTERNAL`
+- `COORDINADOR`
+- `VOLUNTARIO`
 
 Cada rol tiene una lista fija de permisos `(resource, action)`.
+Los roles viejos se migran al arrancar: `HUMANITARIA` y `LEGAL_TI` pasan a `COORDINADOR`; `LECTURA` y `EXTERNAL` pasan a `VOLUNTARIO`.
 
 ## 4.3 Auditoria
 
@@ -137,8 +140,8 @@ Ejemplos:
 Si la base esta vacia, la app crea:
 
 - `Admin Demo` con rol `ADMIN`
-- `Ana Humanitaria` con rol `HUMANITARIA`
-- `Luis Externo` con rol `EXTERNAL`
+- `Cora Coordinadora` con rol `COORDINADOR`
+- `Vale Voluntaria` con rol `VOLUNTARIO`
 
 Eso permite probar la UI sin carga manual.
 
@@ -146,11 +149,12 @@ Eso permite probar la UI sin carga manual.
 
 La demo mantiene dos entradas para que sea facil mostrar el sistema:
 
-- Login inicial: `GET /`, donde el usuario sube su `.p12` y escribe la contrasena.
+- Login inicial: `GET /`, donde admin/coordinador suben `.p12` y voluntarios usan solo contrasena.
 - Login alternativo: `GET /login`, misma pantalla que `/`.
 - Dashboard tecnico: `GET /dashboard`, disponible solo para administrador activo.
 
 El dashboard sigue siendo util para presentar administracion y pruebas rapidas. El login con `.p12` demuestra la parte criptografica estilo e.firma.
+Los voluntarios no usan `.p12`; entran con correo y contrasena local.
 Para pruebas rapidas, el usuario `admin` con contrasena `admin` entra como administrador sin certificado.
 Si un usuario no activo o no administrador intenta abrir el dashboard, el backend aplica su vista de rol en lugar de mostrar el panel administrativo.
 
@@ -178,9 +182,18 @@ En esta vista:
 6. Se verifica que el serial y correo del certificado correspondan al usuario.
 7. Se verifica que el certificado siga vigente.
 8. Se verifica que la CA interna firmo ese certificado.
-9. El backend genera un reto temporal y lo firma con la llave privada del usuario.
-10. El backend verifica esa firma con la llave publica del certificado.
-11. Si todo pasa, registra `login_signature_verified` y redirige al portal.
+9. Se verifica que la fecha de vencimiento del certificado coincida con `user.end_date`.
+10. El backend genera un reto temporal y lo firma con la llave privada del usuario.
+11. El backend verifica esa firma con la llave publica del certificado.
+12. Si todo pasa, registra `login_signature_verified` y redirige al portal.
+
+## 6.3 Login de voluntarios
+
+1. El voluntario escribe su correo.
+2. No sube archivo `.p12`.
+3. Escribe su contrasena.
+4. El backend valida el hash PBKDF2-HMAC-SHA256 guardado en `password_hash`.
+5. Si la cuenta esta `active`, registra `login_password_verified` y redirige al portal.
 
 Esto no crea una sesion persistente. Es intencional: para la demo basta con probar la identidad criptografica y mostrar la vista del usuario.
 
@@ -193,8 +206,10 @@ Esto no crea una sesion persistente. Es intencional: para la demo basta con prob
 | Archivo `.p12` | No es firma; es contenedor cifrado | Entrega la llave privada, certificado de usuario y certificado de CA protegidos con contrasena. |
 | Login con `.p12` | RSA-PSS-SHA256 sobre un reto temporal | El usuario prueba que posee la llave privada sin revelarla. |
 | Verificacion del login | Verificacion RSA-PSS-SHA256 con la llave publica del certificado | El backend confirma que la firma fue creada por la llave privada correspondiente. |
+| Login voluntario | PBKDF2-HMAC-SHA256 | Verifica contrasena local sin certificado ni firma de usuario. |
 
 Ademas, antes de aceptar el login, el backend verifica la firma X.509 del certificado del usuario con la llave publica de la CA interna.
+Para administradores y coordinadores, el certificado debe vencer exactamente en `user.end_date`.
 
 ## 8. Flujo de certificados
 
@@ -213,12 +228,12 @@ Al arrancar:
 
 ## 8.2 Emision para usuarios
 
-Cuando se crea un usuario desde la UI:
+Cuando se crea un administrador o coordinador desde la UI:
 
 1. Se crea el registro en `users`.
 2. Se genera un par de llaves RSA para ese usuario.
 3. Se construye un certificado X.509.
-4. La CA lo firma.
+4. La CA lo firma con vencimiento igual a `user.end_date`.
 5. Se serializa la llave privada con el certificado en un `.p12`.
 6. El `.p12` se protege con la contrasena capturada en el formulario.
 7. Se guardan en la base:
@@ -230,9 +245,11 @@ Cuando se crea un usuario desde la UI:
 
 Si la emision falla, el usuario recien creado se elimina para no dejar un preregistro incompleto.
 
+Cuando se crea un voluntario, no se emite certificado. Solo se guarda `password_hash`.
+
 ## 8.3 Reemision
 
-Si un usuario no tiene certificado o se quiere regenerar, existe una accion de UI para emitirlo otra vez con una nueva contrasena de `.p12`.
+Si se cambia la fecha de expiracion de un administrador o coordinador, el backend pide una nueva contrasena `.p12`, reemite el certificado y cambia el serial guardado. El certificado anterior deja de coincidir con la base de datos.
 
 ## 9. Registro administrativo y vistas por rol
 
@@ -248,15 +265,15 @@ El administrador captura:
 - correo,
 - rol,
 - fecha opcional de expiracion,
-- contrasena inicial del `.p12`.
+- contrasena inicial del `.p12` o contrasena local para voluntario.
 
 Al enviar el formulario:
 
 1. Se crea el usuario.
-2. Se emite su certificado.
-3. Se genera su `.p12`.
+2. Si es administrador/coordinador, se emite su certificado y `.p12`.
+3. Si es voluntario, se guarda contrasena local.
 4. La cuenta queda `active` para que pueda probar el login inmediatamente.
-5. Se registran auditorias `user_created`, `user_activated` y `certificate_issued`.
+5. Se registran auditorias `user_created`, `user_activated` y, si aplica, `certificate_issued`.
 
 ## 9.2 Portal por rol
 
@@ -267,10 +284,8 @@ Ruta:
 La vista cambia segun el rol:
 
 - `ADMIN`: administracion, registro y auditoria.
-- `HUMANITARIA`: vista operativa humanitaria.
-- `LEGAL_TI`: vista legal y tecnica.
-- `LECTURA`: vista solo consulta.
-- `EXTERNAL`: vista externa limitada.
+- `COORDINADOR`: vista operativa con certificado.
+- `VOLUNTARIO`: vista basica sin certificado.
 
 ## 10. Visualizacion de certificados
 
@@ -331,6 +346,7 @@ Desde ahi se puede:
 - cambiar fecha de expiracion,
 - cambiar rol,
 - emitir certificados,
+- crear voluntarios con contrasena,
 - descargar `.p12`,
 - descargar PEM,
 - ver certificados en HTML,
@@ -413,15 +429,16 @@ http://127.0.0.1:8000
 
 4. Elegir `Admin Demo`.
 5. Abrir `Otorgar registro`.
-6. Crear un usuario nuevo con contrasena de `.p12`.
-7. En la tabla, usar:
+6. Crear un coordinador con fecha futura y contrasena de `.p12`, o un voluntario con contrasena local.
+7. En el panel de usuarios, usar:
    - `Ver certificado`
    - `Certificado PEM`
    - `Descargar .p12`
-8. Abrir `Login con certificado`.
-9. Entrar con el correo, el `.p12` descargado y la contrasena.
-10. Revisar el portal segun el rol.
-11. Abrir `Ver certificado CA` para revisar el certificado de la autoridad.
+8. Cambiar la vigencia de un coordinador para reemitir su `.p12`.
+9. Abrir `Login`.
+10. Entrar con correo + `.p12` si es admin/coordinador, o correo + contrasena si es voluntario.
+11. Revisar el portal segun el rol.
+12. Abrir `Ver certificado CA` para revisar el certificado de la autoridad.
 
 ## 15. Archivos generados en runtime
 
@@ -446,6 +463,8 @@ La version actual ya demuestra el flujo completo pedido de forma simple:
 - existe una CA interna,
 - se emiten certificados X.509,
 - se entrega un `.p12` con contrasena,
+- el vencimiento del certificado queda ligado a `end_date`,
+- voluntarios entran con correo y contrasena,
 - se puede verificar login con firma RSA-PSS-SHA256,
 - se guardan metadatos del certificado,
 - se pueden ver y descargar certificados desde la UI.
