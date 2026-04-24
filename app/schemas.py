@@ -22,6 +22,8 @@ class UserOut(BaseModel):
     certificate_serial: str | None
     certificate_not_before: datetime | None
     certificate_not_after: datetime | None
+    is_backup_admin: bool
+    mirror_source_user_id: int | None
     end_date: datetime | None
     created_at: datetime
     updated_at: datetime

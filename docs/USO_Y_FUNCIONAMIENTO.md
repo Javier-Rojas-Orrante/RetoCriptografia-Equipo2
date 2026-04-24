@@ -1,99 +1,173 @@
-# Uso y Funcionamiento
+# Manual de Usuario
 
-Esta version es una demo local muy simple. La meta es mostrar que el control de identidades funciona, no simular un IAM completo.
+## 1. Que hace esta demo
 
-## Que se simplifico
+La aplicacion permite:
 
-- No usa autenticacion externa.
-- No usa JWT.
-- No depende de MySQL para la demo.
-- No necesita migraciones manuales.
-- No usa sesiones ni cookies; el login redirige a una vista demo.
+- crear usuarios con un rol,
+- activar o revocar accesos,
+- cambiar vigencia,
+- cambiar rol,
+- ver una bitacora simple,
+- recuperar al administrador principal usando un espejo,
+- consultar certificados legacy ya existentes.
 
-## Que se mantiene
+## 2. Pantalla inicial
 
-- Identidad local.
-- Un rol por usuario.
-- Permisos por rol.
-- Estados `pending`, `active`, `revoked`, `expired`.
-- Auditoria de acciones.
-- Emision de certificados X.509 con CA interna para administradores y coordinadores.
-- Login demostrativo con `.p12`, contrasena y firma de reto.
-- Login local de voluntarios con correo y contrasena.
-- Vigencia criptografica ligada a `end_date`.
-- Vistas diferentes por nivel de usuario.
+La pantalla inicial es `GET /` y siempre muestra el login.
 
-## Como arranca
+El acceso es por:
 
-1. FastAPI levanta la app.
-2. SQLAlchemy crea las tablas automaticamente.
-3. Se insertan roles, permisos y usuarios demo si la base esta vacia.
-4. Si no existe, se crea una autoridad certificadora interna.
-5. La pantalla inicial de login se sirve desde `GET /`.
+- usuario o correo,
+- contrasena.
 
-## Flujo de la interfaz
+Ya no se pide `.p12` para entrar.
 
-1. Entras por `GET /`, que muestra la pantalla de login.
-2. Administradores y coordinadores se autentican con correo, archivo `.p12` y contrasena.
-3. Para pruebas rapidas puedes usar `admin` / `admin` sin certificado.
-4. Los voluntarios se autentican con correo y contrasena, sin `.p12`.
-5. La app calcula permisos con base en el rol.
-6. Si es administrador, puede otorgar registros, activar, revocar, cambiar expiracion, cambiar rol y emitir certificados.
-7. Al crear administrador o coordinador, el backend genera llave privada, certificado X.509 y paquete `.p12`.
-8. Al crear voluntario, el backend guarda un hash PBKDF2-HMAC-SHA256 de su contrasena.
-9. Cada accion deja un evento en la bitacora.
-10. Si un usuario no es administrador activo, aunque intente abrir `/dashboard`, se le muestra su vista de rol.
+## 3. Credenciales demo
 
-## Usuarios demo iniciales
+- `admin / admin`
+- `coordinador / demo1234`
+- `operativo / demo1234`
+- `voluntario / demo1234`
+- `admin.respaldo@demo.local / respaldo1234`
 
-- `Admin Demo`
-- `Cora Coordinadora`
-- `Vale Voluntaria`
+## 4. Como entrar
 
-## Archivos clave
+1. Abre la app.
+2. Escribe usuario o correo.
+3. Escribe contrasena.
+4. Pulsa `Entrar`.
 
-- [app/main.py](/Users/javier/Documents/New%20project/app/main.py): interfaz y rutas.
-- [app/services.py](/Users/javier/Documents/New%20project/app/services.py): seed, permisos, usuarios, auditoria y certificados.
-- [app/models.py](/Users/javier/Documents/New%20project/app/models.py): tablas.
-- [app/db.py](/Users/javier/Documents/New%20project/app/db.py): base local.
+Si la cuenta es `ADMIN active`, se abre el dashboard admin.
+Si la cuenta es de otro rol, se abre su portal de usuario.
 
-## Uso rapido
+## 5. Roles visibles
 
-```bash
-pip install -e .
-uvicorn app.main:app --reload
-```
+### Administrador
 
-Luego abre `http://127.0.0.1:8000`.
+- puede crear usuarios,
+- activar,
+- revocar,
+- cambiar fechas de expiracion,
+- cambiar roles,
+- consultar auditoria,
+- activar el administrador espejo,
+- consultar el historico de certificados.
 
-## Certificados
+### Coordinador
 
-- La CA se guarda en `generated/certs/ca/`.
-- Los `.p12` de usuarios se guardan en `generated/certs/users/`.
-- La UI permite ver el certificado en navegador, descargar el certificado de la CA, el certificado PEM del usuario y el `.p12`.
-- Los certificados de administradores y coordinadores vencen exactamente en la fecha `end_date` del usuario.
-- Cuando se cambia la vigencia de un usuario criptografico, se reemite su certificado y su `.p12`.
-- Los voluntarios no usan certificados.
+- entra con usuario y contrasena,
+- tiene vista operativa amplia,
+- no administra usuarios.
 
-## Firmas criptograficas usadas
+### Operativo
 
-- Certificado de la CA: X.509 autofirmado con RSA 2048 y SHA-256.
-- Certificado de usuario: X.509 con llave publica RSA 2048, firmado por la CA con SHA-256.
-- Archivo `.p12`: no es una firma; es un contenedor cifrado que guarda la llave privada del usuario, su certificado y el certificado de la CA.
-- Login con `.p12`: el backend descifra el `.p12`, verifica que el certificado fue firmado por la CA y firma un reto temporal con la llave privada del usuario usando RSA-PSS-SHA256.
-- Verificacion del login: el backend valida esa firma con la llave publica del certificado del usuario.
-- Login voluntario: se valida contrasena local con PBKDF2-HMAC-SHA256; no hay firma criptografica de usuario.
+- entra con usuario y contrasena,
+- tiene una vista operativa mas acotada,
+- no administra usuarios.
 
-## Vistas principales
+### Voluntario
 
-- `GET /login`: pantalla de acceso; `.p12` para administradores/coordinadores, contrasena local para voluntarios.
-- `GET /portal?as_user=ID`: portal del usuario con contenido segun rol.
-- `GET /admin/register?as_user=ID`: pantalla de administrador para otorgar un registro, emitir certificado y entregar `.p12`.
-- `GET /`: pantalla inicial de login.
-- `GET /dashboard`: dashboard tecnico solo para administrador activo.
+- entra con usuario y contrasena,
+- tiene acceso restringido y simplificado.
 
-## Acciones de cuenta en el panel admin
+## 6. Crear usuario
 
-- `Activar`: sirve para usuarios nuevos o revocados.
-- `Revocar`: bloquea el acceso del usuario.
-- `Cambiar fecha`: para administradores/coordinadores reemite `.p12`; para voluntarios solo actualiza `end_date`. Si estaba `expired` y la fecha es futura, vuelve a `active`.
+1. Entra como administrador.
+2. Abre `Otorgar registro` o usa el formulario del dashboard.
+3. Captura:
+   - nombre,
+   - correo,
+   - rol,
+   - fecha de expiracion opcional,
+   - contrasena inicial.
+4. Guarda.
+
+El usuario se crea en estado `pending`.
+
+## 7. Activar o reactivar usuario
+
+### Activar usuario nuevo
+
+1. Busca al usuario en el dashboard.
+2. En la tarjeta del usuario, usa `Activar`.
+3. Si la cuenta ya tiene contrasena inicial, no necesitas capturar una nueva.
+
+### Reactivar usuario revocado
+
+La revocacion de emergencia borra la contrasena guardada.
+Por eso, al reactivar un revocado, el campo `Nueva contrasena` es obligatorio.
+
+## 8. Revocacion de emergencia
+
+La accion `Revocar de emergencia`:
+
+- cambia el estado a `revoked`,
+- borra `password_hash`,
+- impide entrar de inmediato con la contrasena anterior,
+- deja traza en auditoria.
+
+Usala cuando haya extravio de dispositivo o cambio administrativo urgente.
+
+## 9. Cambiar expiracion
+
+1. En la tarjeta del usuario, abre la seccion `Vigencia`.
+2. Selecciona una nueva fecha futura.
+3. Guarda.
+
+Si la cuenta estaba `expired` y la fecha nueva es futura, vuelve a `active`.
+
+## 10. Cambiar rol
+
+1. En la tarjeta del usuario, abre la seccion `Rol`.
+2. Selecciona el nuevo rol.
+3. Guarda.
+
+El cambio aplica en la siguiente entrada al sistema.
+
+## 11. Recuperacion del administrador
+
+La demo mantiene un `administrador espejo` separado de la lista normal de usuarios.
+
+Flujo:
+
+1. Entra como admin principal.
+2. En el bloque `Recuperacion admin`, pulsa `Activar espejo`.
+3. El sistema:
+   - revoca al admin principal,
+   - limpia su contrasena,
+   - activa al espejo,
+   - registra auditoria.
+
+Despues debes regenerar un nuevo respaldo.
+
+## 12. Historico criptografico
+
+Los certificados ya no se usan para login ni para emision operativa.
+
+Solo quedan como historico:
+
+- ver certificado de usuario,
+- descargar PEM,
+- descargar `.p12`,
+- ver certificado de la CA interna.
+
+Estas acciones solo aparecen para administracion.
+
+## 13. Errores comunes
+
+### `La cuenta no esta activa`
+
+La cuenta esta en `pending`, `revoked` o `expired`.
+
+### `Contrasena incorrecta`
+
+La contrasena no coincide con el hash almacenado.
+
+### `Actualiza la fecha de expiracion antes de activar esta cuenta`
+
+Primero cambia la vigencia, luego activa.
+
+### `Usa la recuperacion por espejo`
+
+Intentaste revocar al admin principal desde la lista normal. Para eso existe la accion de espejo.
