@@ -2,18 +2,19 @@
 
 Demo minimalista en FastAPI para mostrar:
 
-- login por usuario o correo y contrasena,
+- login mixto: `.p12` para `ADMIN` y `COORDINADOR`, contrasena para `OPERATIVO` y `VOLUNTARIO`,
 - 4 roles visibles: `ADMIN`, `COORDINADOR`, `OPERATIVO`, `VOLUNTARIO`,
 - revocacion de emergencia que invalida el acceso de inmediato,
 - expiracion y reactivacion de cuentas,
 - respaldo espejo del administrador,
 - auditoria basica,
-- historico criptografico solo de consulta.
+- certificados X.509 emitidos por una CA interna para administradores y coordinadores.
 
 ## Estado actual
 
-La demo ya no usa certificados para autenticacion normal.
-Los certificados existentes permanecen solo como historico legacy visible para administracion.
+`ADMIN` y `COORDINADOR` volvieron a usar autenticacion criptografica con `.p12`.
+`OPERATIVO` y `VOLUNTARIO` siguen con acceso por usuario o correo y contrasena.
+El panel admin ahora muestra usuarios en filas compactas expandibles para ordenar la gestion.
 
 ## Como correrlo
 
@@ -27,10 +28,11 @@ Abre [http://127.0.0.1:8000](http://127.0.0.1:8000).
 ## Credenciales demo
 
 - `admin / admin`
-- `coordinador / demo1234`
+- `admin@demo.local + .p12 + admin`
+- `coordinador@demo.local + .p12 + demo1234`
 - `operativo / demo1234`
 - `voluntario / demo1234`
-- respaldo espejo admin: `admin.respaldo@demo.local / respaldo1234`
+- respaldo espejo admin: `admin.respaldo@demo.local + .p12 + respaldo1234`
 
 Tambien puedes entrar usando los correos completos:
 

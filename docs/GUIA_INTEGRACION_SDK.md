@@ -7,15 +7,15 @@ Este proyecto no expone un SDK empaquetado; para la demo, el entregable equivale
 La demo actual usa:
 
 - identificador: correo o alias demo,
-- contrasena,
+- `.p12` + contrasena para `ADMIN` y `COORDINADOR`,
+- contrasena para `OPERATIVO` y `VOLUNTARIO`,
 - redireccion a portal o dashboard.
 
 No usa:
 
 - JWT,
 - cookies de sesion robustas,
-- refresh tokens,
-- certificados para login.
+- refresh tokens.
 
 ## 2. Endpoints API
 
@@ -61,6 +61,7 @@ Campos:
 
 - `identifier`
 - `password`
+- `p12_file` opcional
 
 Ejemplo:
 
@@ -80,7 +81,7 @@ Campos:
 - `email`
 - `role_id`
 - `end_date` opcional
-- `password`
+- `credential_secret`
 
 ## `POST /ui/users/{user_id}/status`
 
@@ -88,7 +89,7 @@ Campos:
 
 - `actor_id`
 - `status`
-- `new_password` opcional
+- `new_secret` opcional
 
 Valores soportados:
 
@@ -101,6 +102,7 @@ Campos:
 
 - `actor_id`
 - `end_date`
+- `new_secret` opcional para roles criptograficos
 
 ## `POST /ui/users/{user_id}/role`
 
@@ -108,6 +110,7 @@ Campos:
 
 - `actor_id`
 - `role_id`
+- `new_secret` opcional si cambias a un rol criptografico
 
 ## `POST /ui/admin/recovery/activate-mirror`
 
@@ -164,5 +167,5 @@ Eventos clave:
 
 ## 7. Nota sobre certificados
 
-Los endpoints de certificados siguen existiendo solo para historico legacy.
-No deben considerarse parte del flujo principal de integracion.
+Los endpoints de certificados vuelven a ser parte del flujo principal para `ADMIN` y `COORDINADOR`.
+`OPERATIVO` y `VOLUNTARIO` no dependen de ellos.

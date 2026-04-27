@@ -7,10 +7,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from cryptography import x509
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.serialization import pkcs12
-from cryptography.x509.oid import NameOID
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session, joinedload
 
@@ -57,6 +58,7 @@ ROLE_DEFINITIONS = {
 
 VISIBLE_ROLE_CODES = tuple(ROLE_DEFINITIONS)
 CRYPTO_ROLE_CODES = {"ADMIN", "COORDINADOR"}
+DEFAULT_CRYPTO_VALIDITY_DAYS = 365
 DEFAULT_PASSWORD = "demo1234"
 DEMO_ADMIN_PASSWORD = "admin"
 DEMO_BACKUP_ADMIN_PASSWORD = "respaldo1234"
@@ -115,6 +117,12 @@ def _normalized_future_datetime(value: datetime) -> datetime:
     return clean_value
 
 
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
 def _name_to_text(name: x509.Name) -> str:
     parts = []
     for attribute in name:
@@ -144,6 +152,14 @@ def _certificate_summary(certificate: x509.Certificate, pem_text: str) -> dict:
 
 def _role_order(role: Role) -> int:
     return list(ROLE_DEFINITIONS).index(role.code) if role.code in ROLE_DEFINITIONS else len(ROLE_DEFINITIONS)
+
+
+def _demo_secret_for_user(user: User) -> str:
+    if user.is_backup_admin:
+        return DEMO_BACKUP_ADMIN_PASSWORD
+    if user.email == "admin@demo.local":
+        return DEMO_ADMIN_PASSWORD
+    return DEFAULT_PASSWORD
 
 
 class AuditService:
@@ -300,11 +316,193 @@ class CertificateAuthorityService:
 
 class CertificateService:
     @staticmethod
+    def issue_for_user(db: Session, user: User, password: str, reissue: bool = False) -> User:
+        if not role_requires_crypto(user):
+            raise ValueError("Este usuario no requiere certificado criptografico")
+        if not password.strip():
+            raise ValueError("Debes indicar una contrasena para el archivo .p12")
+        if user.p12_path and not reissue and user.certificate_serial:
+            return user
+
+        ca_key, ca_cert = CertificateAuthorityService.ensure_ca()
+        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        now = datetime.now(UTC)
+        if user.end_date is None:
+            user.end_date = (datetime.utcnow() + timedelta(days=DEFAULT_CRYPTO_VALIDITY_DAYS)).replace(microsecond=0)
+        user.end_date = _normalized_future_datetime(user.end_date)
+        valid_until = _as_utc(user.end_date)
+
+        subject = x509.Name(
+            [
+                x509.NameAttribute(NameOID.COUNTRY_NAME, "MX"),
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Casa Monarca"),
+                x509.NameAttribute(NameOID.COMMON_NAME, user.full_name),
+                x509.NameAttribute(NameOID.EMAIL_ADDRESS, user.email),
+            ]
+        )
+
+        certificate = (
+            x509.CertificateBuilder()
+            .subject_name(subject)
+            .issuer_name(ca_cert.subject)
+            .public_key(private_key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(minutes=5))
+            .not_valid_after(valid_until)
+            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .add_extension(
+                x509.KeyUsage(
+                    digital_signature=True,
+                    key_encipherment=True,
+                    content_commitment=False,
+                    data_encipherment=False,
+                    key_agreement=False,
+                    key_cert_sign=False,
+                    crl_sign=False,
+                    encipher_only=False,
+                    decipher_only=False,
+                ),
+                critical=True,
+            )
+            .add_extension(
+                x509.ExtendedKeyUsage(
+                    [ExtendedKeyUsageOID.CLIENT_AUTH, ExtendedKeyUsageOID.EMAIL_PROTECTION]
+                ),
+                critical=False,
+            )
+            .add_extension(x509.SubjectAlternativeName([x509.RFC822Name(user.email)]), critical=False)
+            .sign(private_key=ca_key, algorithm=hashes.SHA256())
+        )
+
+        p12_bytes = pkcs12.serialize_key_and_certificates(
+            name=user.email.encode(),
+            key=private_key,
+            cert=certificate,
+            cas=[ca_cert],
+            encryption_algorithm=serialization.BestAvailableEncryption(password.encode()),
+        )
+
+        CertificateAuthorityService.user_dir.mkdir(parents=True, exist_ok=True)
+        safe_email = user.email.replace("@", "_at_").replace(".", "_")
+        p12_path = (CertificateAuthorityService.user_dir / f"user-{user.id}-{safe_email}.p12").resolve()
+        p12_path.write_bytes(p12_bytes)
+
+        user.certificate_serial = format(certificate.serial_number, "x")
+        user.certificate_pem = certificate.public_bytes(serialization.Encoding.PEM).decode()
+        user.certificate_not_before = certificate.not_valid_before_utc.replace(tzinfo=None)
+        user.certificate_not_after = certificate.not_valid_after_utc.replace(tzinfo=None)
+        user.p12_path = str(p12_path)
+        user.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(user)
+        return user
+
+    @staticmethod
     def describe_user_certificate(user: User) -> dict | None:
         if not user.certificate_pem:
             return None
         certificate = x509.load_pem_x509_certificate(user.certificate_pem.encode())
         return _certificate_summary(certificate, user.certificate_pem)
+
+
+class SignatureLoginService:
+    @staticmethod
+    def _certificate_has_user_email(certificate: x509.Certificate, email: str) -> bool:
+        try:
+            san = certificate.extensions.get_extension_for_class(x509.SubjectAlternativeName)
+            if email in san.value.get_values_for_type(x509.RFC822Name):
+                return True
+        except x509.ExtensionNotFound:
+            pass
+
+        subject_emails = certificate.subject.get_attributes_for_oid(NameOID.EMAIL_ADDRESS)
+        return any(attribute.value == email for attribute in subject_emails)
+
+    @staticmethod
+    def _verify_ca_signature(certificate: x509.Certificate, ca_certificate: x509.Certificate) -> None:
+        ca_public_key = ca_certificate.public_key()
+        if not isinstance(ca_public_key, rsa.RSAPublicKey):
+            raise ValueError("La CA interna no usa una llave RSA valida")
+
+        ca_public_key.verify(
+            certificate.signature,
+            certificate.tbs_certificate_bytes,
+            padding.PKCS1v15(),
+            certificate.signature_hash_algorithm,
+        )
+
+    @staticmethod
+    def authenticate_with_p12(db: Session, *, identifier: str, p12_bytes: bytes, password: str) -> tuple[User, dict]:
+        user = PasswordLoginService.find_user_by_identifier(db, identifier)
+        if not user:
+            raise ValueError("Usuario no registrado")
+        if user.status != "active":
+            raise ValueError(f"La cuenta no esta activa: {user.status}")
+        if not role_requires_crypto(user):
+            raise ValueError("Este usuario entra con correo y contrasena")
+        if not user.certificate_serial:
+            raise ValueError("El usuario no tiene certificado emitido")
+
+        try:
+            private_key, certificate, _extra = pkcs12.load_key_and_certificates(
+                p12_bytes,
+                password.encode(),
+            )
+        except Exception as exc:
+            raise ValueError("No se pudo abrir el .p12 con esa contrasena") from exc
+
+        if private_key is None or certificate is None:
+            raise ValueError("El .p12 no contiene llave privada y certificado")
+        if not isinstance(private_key, rsa.RSAPrivateKey):
+            raise ValueError("El .p12 no contiene una llave privada RSA")
+        if not isinstance(certificate.public_key(), rsa.RSAPublicKey):
+            raise ValueError("El certificado no contiene una llave publica RSA")
+
+        if format(certificate.serial_number, "x") != user.certificate_serial:
+            raise ValueError("El certificado no corresponde al usuario registrado")
+        if not SignatureLoginService._certificate_has_user_email(certificate, user.email):
+            raise ValueError("El correo del certificado no coincide con el usuario")
+
+        now = datetime.now(UTC)
+        if certificate.not_valid_before_utc > now or certificate.not_valid_after_utc < now:
+            raise ValueError("El certificado esta fuera de vigencia")
+        if user.end_date:
+            if certificate.not_valid_after_utc.replace(tzinfo=None) != user.end_date.replace(microsecond=0):
+                raise ValueError("El certificado no coincide con la vigencia actual del usuario")
+
+        _ca_key, ca_certificate = CertificateAuthorityService.ensure_ca()
+        try:
+            SignatureLoginService._verify_ca_signature(certificate, ca_certificate)
+        except InvalidSignature as exc:
+            raise ValueError("La CA interna no reconoce la firma del certificado") from exc
+
+        challenge = f"login:{user.id}:{user.email}:{now.isoformat()}".encode()
+        signature = private_key.sign(
+            challenge,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH,
+            ),
+            hashes.SHA256(),
+        )
+
+        certificate.public_key().verify(
+            signature,
+            challenge,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH,
+            ),
+            hashes.SHA256(),
+        )
+
+        proof = {
+            "challenge": challenge.decode(),
+            "signature_preview": signature.hex()[:48],
+            "signature_algorithm": "RSA-PSS-SHA256",
+            "certificate_signature_algorithm": certificate.signature_algorithm_oid._name,
+        }
+        return user, proof
 
 
 class ExpirationService:
@@ -431,6 +629,13 @@ class AdminRecoveryService:
             backup.updated_at = datetime.utcnow()
             if not backup.password_hash:
                 backup.password_hash = PasswordService.hash_password(DEMO_BACKUP_ADMIN_PASSWORD)
+
+        if role_requires_crypto(backup) and (
+            not backup.certificate_serial
+            or not backup.certificate_not_after
+            or (backup.end_date and backup.certificate_not_after.replace(microsecond=0) != backup.end_date.replace(microsecond=0))
+        ):
+            CertificateService.issue_for_user(db, backup, DEMO_BACKUP_ADMIN_PASSWORD, reissue=True)
         return backup
 
     @classmethod
@@ -461,7 +666,7 @@ class AdminRecoveryService:
 
 class PasswordLoginService:
     @staticmethod
-    def _find_user_by_identifier(db: Session, identifier: str) -> User | None:
+    def find_user_by_identifier(db: Session, identifier: str) -> User | None:
         clean_identifier = identifier.strip().lower()
         if not clean_identifier:
             return None
@@ -493,11 +698,13 @@ class PasswordLoginService:
     @classmethod
     def authenticate_user(cls, db: Session, *, identifier: str, password: str) -> User:
         clean_identifier = identifier.strip().lower()
-        user = cls._find_user_by_identifier(db, clean_identifier)
+        user = cls.find_user_by_identifier(db, clean_identifier)
         if not user:
             raise ValueError("Usuario no registrado")
         if user.status != "active":
             raise ValueError(f"La cuenta no esta activa: {user.status}")
+        if role_requires_crypto(user):
+            raise ValueError("Este usuario requiere autenticacion con certificado .p12")
         if not PasswordService.verify_password(password, user.password_hash):
             raise ValueError("Contrasena incorrecta")
         return user
@@ -564,6 +771,11 @@ class BootstrapService:
                 )
                 user.password_hash = PasswordService.hash_password(demo_password)
 
+            if role_requires_crypto(user) and user.end_date is None:
+                user.end_date = (datetime.utcnow() + timedelta(days=DEFAULT_CRYPTO_VALIDITY_DAYS)).replace(
+                    microsecond=0
+                )
+
     @staticmethod
     def _ensure_demo_users(db: Session) -> None:
         roles_by_code = {role.code: role for role in db.scalars(select(Role)).all()}
@@ -575,12 +787,18 @@ class BootstrapService:
                 continue
 
             role = roles_by_code[item["role_code"]]
+            end_date = (
+                (datetime.utcnow() + timedelta(days=DEFAULT_CRYPTO_VALIDITY_DAYS)).replace(microsecond=0)
+                if role.code in CRYPTO_ROLE_CODES
+                else None
+            )
             db.add(
                 User(
                     full_name=item["full_name"],
                     email=item["email"],
                     role_id=role.id,
                     status=item["status"],
+                    end_date=end_date,
                     password_hash=PasswordService.hash_password(item["password"]),
                     is_backup_admin=False,
                 )
@@ -590,12 +808,40 @@ class BootstrapService:
     @staticmethod
     def seed(db: Session) -> None:
         SchemaService.ensure_user_certificate_columns()
+        CertificateAuthorityService.ensure_ca()
         BootstrapService._upsert_roles_and_permissions(db)
         db.commit()
 
         BootstrapService._migrate_roles_and_passwords(db)
         BootstrapService._ensure_demo_users(db)
-        AdminRecoveryService.sync_backup_admin(db)
+        backup = AdminRecoveryService.sync_backup_admin(db)
+        db.commit()
+        ExpirationService.expire_users(db)
+
+        for user in db.scalars(select(User).options(joinedload(User.role))).all():
+            if not role_requires_crypto(user) or user.certificate_serial:
+                continue
+            if user.end_date is not None and user.end_date <= datetime.utcnow():
+                if user.status != "expired":
+                    user.status = "expired"
+                    user.updated_at = datetime.utcnow()
+                continue
+            if user.end_date is None:
+                user.end_date = (datetime.utcnow() + timedelta(days=DEFAULT_CRYPTO_VALIDITY_DAYS)).replace(
+                    microsecond=0
+                )
+                db.commit()
+                db.refresh(user)
+            if user.status in {"active", "pending", "revoked"}:
+                CertificateService.issue_for_user(db, user, _demo_secret_for_user(user))
+        if (
+            backup
+            and role_requires_crypto(backup)
+            and not backup.certificate_serial
+            and backup.end_date
+            and backup.end_date > datetime.utcnow()
+        ):
+            CertificateService.issue_for_user(db, backup, _demo_secret_for_user(backup))
         db.commit()
 
 
@@ -608,7 +854,7 @@ class UserService:
         full_name: str,
         role_id: int,
         end_date: datetime | None = None,
-        password: str,
+        credential_secret: str,
     ) -> User:
         clean_email = email.strip().lower()
         clean_name = full_name.strip()
@@ -624,6 +870,8 @@ class UserService:
         clean_end_date = None
         if end_date is not None:
             clean_end_date = _normalized_future_datetime(end_date)
+        elif role.code in CRYPTO_ROLE_CODES:
+            clean_end_date = (datetime.utcnow() + timedelta(days=DEFAULT_CRYPTO_VALIDITY_DAYS)).replace(microsecond=0)
 
         user = User(
             email=clean_email,
@@ -631,12 +879,14 @@ class UserService:
             role_id=role_id,
             status="pending",
             end_date=clean_end_date,
-            password_hash=PasswordService.hash_password(password),
+            password_hash=PasswordService.hash_password(credential_secret),
             is_backup_admin=False,
         )
         db.add(user)
         db.commit()
         db.refresh(user)
+        if role_requires_crypto(user):
+            return CertificateService.issue_for_user(db, user, credential_secret)
         return user
 
     @staticmethod
@@ -690,31 +940,45 @@ class UserService:
         return sorted(roles, key=_role_order)
 
     @staticmethod
-    def update_status(db: Session, user: User, status: str, new_password: str = "") -> User:
+    def update_status(db: Session, user: User, status: str, new_secret: str = "") -> User:
         if status == "active":
             if user.end_date and user.end_date <= datetime.utcnow():
                 raise ValueError("Actualiza la fecha de expiracion antes de activar esta cuenta")
-            if not user.password_hash:
-                if not new_password.strip():
-                    raise ValueError("Debes definir una nueva contrasena para restablecer el acceso")
-                user.password_hash = PasswordService.hash_password(new_password)
-            elif new_password.strip():
-                user.password_hash = PasswordService.hash_password(new_password)
+            if role_requires_crypto(user):
+                needs_reissue = user.status == "revoked" or not user.certificate_serial
+                if needs_reissue:
+                    if not new_secret.strip():
+                        raise ValueError("Debes definir una nueva contrasena para el .p12")
+                    user.password_hash = PasswordService.hash_password(new_secret)
+                elif new_secret.strip():
+                    user.password_hash = PasswordService.hash_password(new_secret)
+            else:
+                if not user.password_hash:
+                    if not new_secret.strip():
+                        raise ValueError("Debes definir una nueva contrasena para restablecer el acceso")
+                    user.password_hash = PasswordService.hash_password(new_secret)
+                elif new_secret.strip():
+                    user.password_hash = PasswordService.hash_password(new_secret)
         elif status == "revoked":
             primary_admin = AdminRecoveryService.get_primary_admin(db)
             if primary_admin and primary_admin.id == user.id:
                 raise ValueError("Usa la recuperacion por espejo para transferir al administrador principal")
-            user.password_hash = None
+            if role_requires_crypto(user):
+                user.password_hash = None
+            else:
+                user.password_hash = None
 
         user.status = status
         user.updated_at = datetime.utcnow()
         AdminRecoveryService.sync_backup_admin(db)
         db.commit()
         db.refresh(user)
+        if status == "active" and role_requires_crypto(user) and (not user.certificate_serial or new_secret.strip()):
+            return CertificateService.issue_for_user(db, user, new_secret or _demo_secret_for_user(user), reissue=True)
         return user
 
     @staticmethod
-    def update_expiration(db: Session, user: User, end_date: datetime) -> User:
+    def update_expiration(db: Session, user: User, end_date: datetime, new_secret: str = "") -> User:
         clean_end_date = _normalized_future_datetime(end_date)
         user.end_date = clean_end_date
         if user.status == "expired":
@@ -723,20 +987,37 @@ class UserService:
         AdminRecoveryService.sync_backup_admin(db)
         db.commit()
         db.refresh(user)
+        if role_requires_crypto(user):
+            if not new_secret.strip():
+                raise ValueError("Debes indicar una nueva contrasena para reemitir el .p12")
+            user.password_hash = PasswordService.hash_password(new_secret)
+            db.commit()
+            db.refresh(user)
+            return CertificateService.issue_for_user(db, user, new_secret, reissue=True)
         return user
 
     @staticmethod
-    def change_role(db: Session, user: User, role_id: int) -> User:
+    def change_role(db: Session, user: User, role_id: int, new_secret: str = "") -> User:
         role = db.get(Role, role_id)
         if not role or role.code not in VISIBLE_ROLE_CODES:
             raise ValueError("Rol no valido")
         if user.is_backup_admin:
             raise ValueError("El administrador espejo se gestiona desde el modulo de recuperacion")
 
+        old_role_was_crypto = role_requires_crypto(user)
         user.role_id = role_id
         user.role = role
+        if role.code in CRYPTO_ROLE_CODES and user.end_date is None:
+            user.end_date = (datetime.utcnow() + timedelta(days=DEFAULT_CRYPTO_VALIDITY_DAYS)).replace(microsecond=0)
         user.updated_at = datetime.utcnow()
         AdminRecoveryService.sync_backup_admin(db)
         db.commit()
         db.refresh(user)
+        if role.code in CRYPTO_ROLE_CODES and not old_role_was_crypto:
+            if not new_secret.strip():
+                raise ValueError("Debes indicar la contrasena inicial del .p12 para este rol")
+            user.password_hash = PasswordService.hash_password(new_secret)
+            db.commit()
+            db.refresh(user)
+            return CertificateService.issue_for_user(db, user, new_secret, reissue=True)
         return user

@@ -7,7 +7,7 @@ La demo usa:
 - `FastAPI` para rutas y UI HTML simple,
 - `SQLAlchemy` para persistencia,
 - `SQLite` como base local,
-- `cryptography` solo para consultar certificados legacy existentes.
+- `cryptography` para CA interna, certificados X.509, `.p12` y prueba de posesion de llave privada.
 
 El sistema actual se centra en identidad local, control de acceso, revocacion y recuperacion del administrador.
 
@@ -36,6 +36,7 @@ Contiene la logica de negocio:
 - `ExpirationService`
 - `AdminRecoveryService`
 - `PasswordLoginService`
+- `SignatureLoginService`
 - `BootstrapService`
 - `UserService`
 - `CertificateAuthorityService`
@@ -109,14 +110,17 @@ Migracion legacy en bootstrap:
 
 ## 5. Autenticacion
 
-La autenticacion normal pasa por `PasswordLoginService.authenticate_user`.
+La demo usa dos caminos:
+
+- `SignatureLoginService.authenticate_with_p12` para `ADMIN` y `COORDINADOR`,
+- `PasswordLoginService.authenticate_user` para `OPERATIVO` y `VOLUNTARIO`.
 
 Reglas:
 
 - acepta correo o alias demo como `admin`,
 - exige `status == active`,
-- valida `password_hash` con PBKDF2-HMAC-SHA256,
-- no usa `.p12`.
+- los roles criptograficos validan `.p12`, certificado emitido por la CA y firma RSA-PSS-SHA256 sobre un reto,
+- los roles no criptograficos validan `password_hash` con PBKDF2-HMAC-SHA256.
 
 ## 6. Autorizacion
 
@@ -149,6 +153,8 @@ Si la cuenta no tiene hash:
 - reescribe el hash,
 - cambia el estado a `active`.
 
+En roles criptograficos, si la cuenta fue revocada se exige una nueva contrasena `.p12` y se reemite el certificado.
+
 ## 9. Expiracion
 
 `ExpirationService.expire_users`:
@@ -161,7 +167,8 @@ Si la cuenta no tiene hash:
 `UserService.update_expiration`:
 
 - guarda una nueva fecha futura,
-- si la cuenta estaba `expired`, la regresa a `active`.
+- si la cuenta estaba `expired`, la regresa a `active`,
+- en roles criptograficos reemite el certificado con la nueva vigencia.
 
 ## 10. Administrador espejo
 
@@ -178,20 +185,15 @@ Decisiones:
 - se sincroniza con el admin principal solo en metadatos no secretos,
 - no crea un nuevo espejo automaticamente tras la recuperacion.
 
-## 11. Certificados legacy
+## 11. Certificados
 
-`CertificateAuthorityService` y `CertificateService` permanecen para:
+`CertificateAuthorityService`, `CertificateService` y `SignatureLoginService` participan en:
 
-- ver la CA interna,
-- describir certificados guardados,
-- descargar archivos legacy.
-
-No participan en:
-
-- login,
-- alta de usuarios,
-- cambio de vigencia,
-- reemision.
+- emitir certificados para `ADMIN` y `COORDINADOR`,
+- construir y guardar `.p12`,
+- verificar la firma de la CA,
+- validar la firma del reto de login,
+- reemitir certificados cuando cambia la vigencia o se reactiva una cuenta revocada.
 
 ## 12. Seed demo
 

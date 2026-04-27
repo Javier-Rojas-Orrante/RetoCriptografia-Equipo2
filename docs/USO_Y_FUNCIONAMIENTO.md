@@ -10,7 +10,7 @@ La aplicacion permite:
 - cambiar rol,
 - ver una bitacora simple,
 - recuperar al administrador principal usando un espejo,
-- consultar certificados legacy ya existentes.
+- emitir y consultar certificados para administradores y coordinadores.
 
 ## 2. Pantalla inicial
 
@@ -18,25 +18,25 @@ La pantalla inicial es `GET /` y siempre muestra el login.
 
 El acceso es por:
 
-- usuario o correo,
-- contrasena.
-
-Ya no se pide `.p12` para entrar.
+- `ADMIN` y `COORDINADOR`: correo o usuario + archivo `.p12` + contrasena del paquete,
+- `OPERATIVO` y `VOLUNTARIO`: usuario o correo + contrasena.
 
 ## 3. Credenciales demo
 
 - `admin / admin`
-- `coordinador / demo1234`
+- `admin@demo.local + .p12 + admin`
+- `coordinador@demo.local + .p12 + demo1234`
 - `operativo / demo1234`
 - `voluntario / demo1234`
-- `admin.respaldo@demo.local / respaldo1234`
+- `admin.respaldo@demo.local + .p12 + respaldo1234`
 
 ## 4. Como entrar
 
 1. Abre la app.
 2. Escribe usuario o correo.
-3. Escribe contrasena.
-4. Pulsa `Entrar`.
+3. Si eres `ADMIN` o `COORDINADOR`, adjunta tu `.p12`.
+4. Escribe contrasena.
+5. Pulsa `Entrar`.
 
 Si la cuenta es `ADMIN active`, se abre el dashboard admin.
 Si la cuenta es de otro rol, se abre su portal de usuario.
@@ -52,11 +52,12 @@ Si la cuenta es de otro rol, se abre su portal de usuario.
 - cambiar roles,
 - consultar auditoria,
 - activar el administrador espejo,
-- consultar el historico de certificados.
+- autenticar con `.p12`,
+- consultar y reemitir certificados.
 
 ### Coordinador
 
-- entra con usuario y contrasena,
+- entra con `.p12`,
 - tiene vista operativa amplia,
 - no administra usuarios.
 
@@ -80,7 +81,7 @@ Si la cuenta es de otro rol, se abre su portal de usuario.
    - correo,
    - rol,
    - fecha de expiracion opcional,
-   - contrasena inicial.
+   - contrasena inicial o clave `.p12`.
 4. Guarda.
 
 El usuario se crea en estado `pending`.
@@ -90,38 +91,43 @@ El usuario se crea en estado `pending`.
 ### Activar usuario nuevo
 
 1. Busca al usuario en el dashboard.
-2. En la tarjeta del usuario, usa `Activar`.
-3. Si la cuenta ya tiene contrasena inicial, no necesitas capturar una nueva.
+2. En la fila del usuario, pulsa `Gestionar`.
+3. Usa `Activar`.
+4. Si el usuario es criptografico y fue revocado, captura una nueva contrasena `.p12`.
 
 ### Reactivar usuario revocado
 
-La revocacion de emergencia borra la contrasena guardada.
-Por eso, al reactivar un revocado, el campo `Nueva contrasena` es obligatorio.
+La revocacion de emergencia invalida el acceso de inmediato.
+
+- En usuarios con contrasena, se borra la credencial guardada.
+- En usuarios criptograficos, se exige una nueva contrasena `.p12` para reemitir el certificado al reactivar.
 
 ## 8. Revocacion de emergencia
 
 La accion `Revocar de emergencia`:
 
 - cambia el estado a `revoked`,
-- borra `password_hash`,
-- impide entrar de inmediato con la contrasena anterior,
+- impide entrar de inmediato con la credencial anterior,
 - deja traza en auditoria.
 
 Usala cuando haya extravio de dispositivo o cambio administrativo urgente.
 
 ## 9. Cambiar expiracion
 
-1. En la tarjeta del usuario, abre la seccion `Vigencia`.
+1. En la fila del usuario, abre `Gestionar`.
 2. Selecciona una nueva fecha futura.
-3. Guarda.
+3. Si el usuario es `ADMIN` o `COORDINADOR`, captura una nueva contrasena `.p12`.
+4. Guarda.
 
 Si la cuenta estaba `expired` y la fecha nueva es futura, vuelve a `active`.
+En usuarios criptograficos se reemite el certificado con la nueva vigencia.
 
 ## 10. Cambiar rol
 
-1. En la tarjeta del usuario, abre la seccion `Rol`.
+1. En la fila del usuario, abre `Gestionar`.
 2. Selecciona el nuevo rol.
-3. Guarda.
+3. Si cambias a `ADMIN` o `COORDINADOR`, indica la contrasena del nuevo `.p12`.
+4. Guarda.
 
 El cambio aplica en la siguiente entrada al sistema.
 
@@ -143,9 +149,14 @@ Despues debes regenerar un nuevo respaldo.
 
 ## 12. Historico criptografico
 
-Los certificados ya no se usan para login ni para emision operativa.
+Los certificados se usan de nuevo para:
 
-Solo quedan como historico:
+- login de `ADMIN`,
+- login de `COORDINADOR`,
+- descarga del `.p12`,
+- consulta del certificado del usuario.
+
+Tambien puedes consultar:
 
 - ver certificado de usuario,
 - descargar PEM,
@@ -163,6 +174,10 @@ La cuenta esta en `pending`, `revoked` o `expired`.
 ### `Contrasena incorrecta`
 
 La contrasena no coincide con el hash almacenado.
+
+### `Este usuario requiere autenticacion con certificado .p12`
+
+Intentaste entrar como `ADMIN` o `COORDINADOR` sin adjuntar el archivo `.p12`.
 
 ### `Actualiza la fecha de expiracion antes de activar esta cuenta`
 

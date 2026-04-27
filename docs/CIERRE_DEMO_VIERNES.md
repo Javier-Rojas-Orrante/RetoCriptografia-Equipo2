@@ -3,7 +3,7 @@
 ## 1. Checklist tecnico final
 
 - login inicial abre siempre en `/`
-- autenticacion solo por contrasena
+- autenticacion mixta: `.p12` para `ADMIN` y `COORDINADOR`, contrasena para `OPERATIVO` y `VOLUNTARIO`
 - roles visibles correctos: `ADMIN`, `COORDINADOR`, `OPERATIVO`, `VOLUNTARIO`
 - dashboard solo para `ADMIN active`
 - revocacion de emergencia borra la contrasena
