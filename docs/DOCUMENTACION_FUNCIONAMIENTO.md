@@ -51,6 +51,7 @@ Define:
 - `Permission`
 - `RolePermission`
 - `AuditLog`
+- `SystemSecret`
 
 ### [app/schemas.py](/Users/javier/Documents/New%20project/app/schemas.py)
 
@@ -78,6 +79,12 @@ Campos legacy de certificados:
 - `certificate_not_before`
 - `certificate_not_after`
 - `p12_path`
+- `p12_base64`
+
+La CA compartida se guarda en `system_secrets` con:
+
+- `ca_private_key_pem`
+- `ca_certificate_pem`
 
 ## 3.2 Estados de cuenta
 
@@ -191,6 +198,7 @@ Decisiones:
 
 - emitir certificados para `ADMIN` y `COORDINADOR`,
 - construir y guardar `.p12`,
+- centralizar la CA y los `.p12` dentro de la base de datos,
 - verificar la firma de la CA,
 - validar la firma del reto de login,
 - reemitir certificados cuando cambia la vigencia o se reactiva una cuenta revocada.

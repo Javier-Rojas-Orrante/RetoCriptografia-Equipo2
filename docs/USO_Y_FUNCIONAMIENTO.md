@@ -164,6 +164,7 @@ Tambien puedes consultar:
 - ver certificado de la CA interna.
 
 Estas acciones solo aparecen para administracion.
+La CA y los `.p12` ya no dependen del disco local de una sola maquina; viven en la base compartida.
 
 ## 13. Errores comunes
 

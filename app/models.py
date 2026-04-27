@@ -31,6 +31,7 @@ class User(Base):
     certificate_not_before: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     certificate_not_after: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     p12_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    p12_base64: Mapped[str | None] = mapped_column(Text, nullable=True)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_backup_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     mirror_source_user_id: Mapped[int | None] = mapped_column(nullable=True)
@@ -71,3 +72,13 @@ class AuditLog(Base):
     result: Mapped[str] = mapped_column(Enum("success", "failure", name="audit_result_enum"), nullable=False)
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class SystemSecret(Base):
+    __tablename__ = "system_secrets"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    value_text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

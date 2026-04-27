@@ -8,13 +8,15 @@ Demo minimalista en FastAPI para mostrar:
 - expiracion y reactivacion de cuentas,
 - respaldo espejo del administrador,
 - auditoria basica,
-- certificados X.509 emitidos por una CA interna para administradores y coordinadores.
+- certificados X.509 emitidos por una CA interna para administradores y coordinadores,
+- material criptografico centralizado en la base de datos compartida.
 
 ## Estado actual
 
 `ADMIN` y `COORDINADOR` volvieron a usar autenticacion criptografica con `.p12`.
 `OPERATIVO` y `VOLUNTARIO` siguen con acceso por usuario o correo y contrasena.
 El panel admin ahora muestra usuarios en filas compactas expandibles para ordenar la gestion.
+La CA y los paquetes `.p12` se almacenan de forma centralizada en la base de datos.
 
 ## Como correrlo
 

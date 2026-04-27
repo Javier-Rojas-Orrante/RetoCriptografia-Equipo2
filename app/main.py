@@ -1,11 +1,10 @@
 from contextlib import asynccontextmanager
 from datetime import datetime
 from html import escape
-from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -413,7 +412,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
 
         certificate_section = "<p class='muted'>Acceso solo con usuario y contrasena.</p>"
         if user_uses_crypto:
-            if user.certificate_serial and user.p12_path:
+            if user.certificate_serial and (user.p12_base64 or user.p12_path):
                 expires_text = (
                     escape(user.certificate_not_after.isoformat(sep=' ', timespec='minutes'))
                     if user.certificate_not_after
@@ -1074,17 +1073,17 @@ def download_p12(user_id: int, as_user: int | None = Query(default=None), db: Se
     actor = get_actor_or_404(db, as_user)
     require_actor_permission(db, actor, "certificates", "view")
     user = UserService.get_user(db, user_id)
-    if not user or not user.p12_path:
+    if not user:
         raise HTTPException(status_code=404, detail="Certificate package not found")
 
-    p12_path = Path(user.p12_path)
-    if not p12_path.exists():
+    p12_bytes = CertificateService.get_user_p12_bytes(db, user)
+    if not p12_bytes:
         raise HTTPException(status_code=404, detail="Certificate package file not found")
 
-    return FileResponse(
-        path=p12_path,
+    return Response(
+        content=p12_bytes,
         media_type="application/x-pkcs12",
-        filename=f"{user.email.replace('@', '_')}.p12",
+        headers={"Content-Disposition": f'attachment; filename="{user.email.replace("@", "_")}.p12"'},
     )
 
 
@@ -1123,7 +1122,7 @@ def download_certificate_pem(user_id: int, as_user: int | None = Query(default=N
 def view_ca_certificate(as_user: int | None = Query(default=None), db: Session = Depends(get_db)):
     actor = get_actor_or_404(db, as_user)
     require_actor_permission(db, actor, "certificates", "view")
-    summary = CertificateAuthorityService.describe_ca_certificate()
+    summary = CertificateAuthorityService.describe_ca_certificate(db)
     return HTMLResponse(render_certificate_page("Certificado legacy de la CA interna", summary, f"/dashboard?as_user={actor.id}"))
 
 
@@ -1131,9 +1130,8 @@ def view_ca_certificate(as_user: int | None = Query(default=None), db: Session =
 def download_ca_certificate(as_user: int | None = Query(default=None), db: Session = Depends(get_db)):
     actor = get_actor_or_404(db, as_user)
     require_actor_permission(db, actor, "certificates", "view")
-    ca_cert_path = CertificateAuthorityService.get_ca_certificate_path()
-    return FileResponse(
-        path=ca_cert_path,
+    return Response(
+        content=CertificateAuthorityService.get_ca_certificate_pem(db),
         media_type="application/x-pem-file",
-        filename="casa-monarca-demo-ca.crt.pem",
+        headers={"Content-Disposition": 'attachment; filename="casa-monarca-demo-ca.crt.pem"'},
     )

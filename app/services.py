@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
 from app.db import engine
-from app.models import AuditLog, Permission, Role, RolePermission, User
+from app.models import AuditLog, Permission, Role, RolePermission, SystemSecret, User
 
 ROLE_DEFINITIONS = {
     "ADMIN": {
@@ -241,6 +241,7 @@ class SchemaService:
             "certificate_not_before": "DATETIME",
             "certificate_not_after": "DATETIME",
             "p12_path": "VARCHAR(255)",
+            "p12_base64": "TEXT",
             "password_hash": "VARCHAR(255)",
             "is_backup_admin": "BOOLEAN NOT NULL DEFAULT 0",
             "mirror_source_user_id": "INTEGER",
@@ -258,15 +259,42 @@ class CertificateAuthorityService:
     user_dir = base_dir / "users"
     ca_key_path = ca_dir / "ca-key.pem"
     ca_cert_path = ca_dir / "ca-cert.pem"
+    ca_key_secret = "ca_private_key_pem"
+    ca_cert_secret = "ca_certificate_pem"
 
     @classmethod
-    def ensure_ca(cls) -> tuple[rsa.RSAPrivateKey, x509.Certificate]:
+    def _set_secret(cls, db: Session, key: str, value: str) -> None:
+        secret = db.scalar(select(SystemSecret).where(SystemSecret.key == key).limit(1))
+        if secret:
+            secret.value_text = value
+            secret.updated_at = datetime.utcnow()
+        else:
+            db.add(SystemSecret(key=key, value_text=value))
+        db.commit()
+
+    @classmethod
+    def _get_secret(cls, db: Session, key: str) -> str | None:
+        secret = db.scalar(select(SystemSecret).where(SystemSecret.key == key).limit(1))
+        return secret.value_text if secret else None
+
+    @classmethod
+    def ensure_ca(cls, db: Session) -> tuple[rsa.RSAPrivateKey, x509.Certificate]:
+        key_pem = cls._get_secret(db, cls.ca_key_secret)
+        cert_pem = cls._get_secret(db, cls.ca_cert_secret)
+        if key_pem and cert_pem:
+            private_key = serialization.load_pem_private_key(key_pem.encode(), password=None)
+            certificate = x509.load_pem_x509_certificate(cert_pem.encode())
+            return private_key, certificate
+
         cls.ca_dir.mkdir(parents=True, exist_ok=True)
         cls.user_dir.mkdir(parents=True, exist_ok=True)
-
         if cls.ca_key_path.exists() and cls.ca_cert_path.exists():
-            private_key = serialization.load_pem_private_key(cls.ca_key_path.read_bytes(), password=None)
-            certificate = x509.load_pem_x509_certificate(cls.ca_cert_path.read_bytes())
+            key_pem = cls.ca_key_path.read_text()
+            cert_pem = cls.ca_cert_path.read_text()
+            cls._set_secret(db, cls.ca_key_secret, key_pem)
+            cls._set_secret(db, cls.ca_cert_secret, cert_pem)
+            private_key = serialization.load_pem_private_key(key_pem.encode(), password=None)
+            certificate = x509.load_pem_x509_certificate(cert_pem.encode())
             return private_key, certificate
 
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -290,24 +318,24 @@ class CertificateAuthorityService:
             .sign(private_key=private_key, algorithm=hashes.SHA256())
         )
 
-        cls.ca_key_path.write_bytes(
-            private_key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.PKCS8,
-                encryption_algorithm=serialization.NoEncryption(),
-            )
+        private_key_pem = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
         )
-        cls.ca_cert_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
+        certificate_pem = certificate.public_bytes(serialization.Encoding.PEM)
+        cls._set_secret(db, cls.ca_key_secret, private_key_pem.decode())
+        cls._set_secret(db, cls.ca_cert_secret, certificate_pem.decode())
         return private_key, certificate
 
     @classmethod
-    def get_ca_certificate_path(cls) -> Path:
-        _, _ = cls.ensure_ca()
-        return cls.ca_cert_path
+    def get_ca_certificate_pem(cls, db: Session) -> str:
+        _, certificate = cls.ensure_ca(db)
+        return certificate.public_bytes(serialization.Encoding.PEM).decode()
 
     @classmethod
-    def describe_ca_certificate(cls) -> dict:
-        _, certificate = cls.ensure_ca()
+    def describe_ca_certificate(cls, db: Session) -> dict:
+        _, certificate = cls.ensure_ca(db)
         return _certificate_summary(
             certificate,
             certificate.public_bytes(serialization.Encoding.PEM).decode(),
@@ -321,10 +349,10 @@ class CertificateService:
             raise ValueError("Este usuario no requiere certificado criptografico")
         if not password.strip():
             raise ValueError("Debes indicar una contrasena para el archivo .p12")
-        if user.p12_path and not reissue and user.certificate_serial:
+        if (user.p12_base64 or user.p12_path) and not reissue and user.certificate_serial:
             return user
 
-        ca_key, ca_cert = CertificateAuthorityService.ensure_ca()
+        ca_key, ca_cert = CertificateAuthorityService.ensure_ca(db)
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         now = datetime.now(UTC)
         if user.end_date is None:
@@ -382,20 +410,53 @@ class CertificateService:
             encryption_algorithm=serialization.BestAvailableEncryption(password.encode()),
         )
 
-        CertificateAuthorityService.user_dir.mkdir(parents=True, exist_ok=True)
-        safe_email = user.email.replace("@", "_at_").replace(".", "_")
-        p12_path = (CertificateAuthorityService.user_dir / f"user-{user.id}-{safe_email}.p12").resolve()
-        p12_path.write_bytes(p12_bytes)
-
         user.certificate_serial = format(certificate.serial_number, "x")
         user.certificate_pem = certificate.public_bytes(serialization.Encoding.PEM).decode()
         user.certificate_not_before = certificate.not_valid_before_utc.replace(tzinfo=None)
         user.certificate_not_after = certificate.not_valid_after_utc.replace(tzinfo=None)
-        user.p12_path = str(p12_path)
+        user.p12_base64 = base64.b64encode(p12_bytes).decode()
+        user.p12_path = None
         user.updated_at = datetime.utcnow()
         db.commit()
         db.refresh(user)
         return user
+
+    @staticmethod
+    def get_user_p12_bytes(db: Session, user: User) -> bytes | None:
+        if user.p12_base64:
+            return base64.b64decode(user.p12_base64.encode())
+        if user.p12_path:
+            p12_path = Path(user.p12_path)
+            if p12_path.exists():
+                p12_bytes = p12_path.read_bytes()
+                user.p12_base64 = base64.b64encode(p12_bytes).decode()
+                user.p12_path = None
+                user.updated_at = datetime.utcnow()
+                db.commit()
+                db.refresh(user)
+                return p12_bytes
+        return None
+
+    @staticmethod
+    def migrate_existing_crypto_material(db: Session) -> int:
+        migrated = 0
+        CertificateAuthorityService.ensure_ca(db)
+        users = list(db.scalars(select(User).options(joinedload(User.role))).all())
+        for user in users:
+            if user.p12_base64:
+                continue
+            if not user.p12_path:
+                continue
+            p12_path = Path(user.p12_path)
+            if not p12_path.exists():
+                continue
+            user.p12_base64 = base64.b64encode(p12_path.read_bytes()).decode()
+            user.p12_path = None
+            user.updated_at = datetime.utcnow()
+            migrated += 1
+        if migrated:
+            db.commit()
+        return migrated
 
     @staticmethod
     def describe_user_certificate(user: User) -> dict | None:
@@ -470,7 +531,7 @@ class SignatureLoginService:
             if certificate.not_valid_after_utc.replace(tzinfo=None) != user.end_date.replace(microsecond=0):
                 raise ValueError("El certificado no coincide con la vigencia actual del usuario")
 
-        _ca_key, ca_certificate = CertificateAuthorityService.ensure_ca()
+        _ca_key, ca_certificate = CertificateAuthorityService.ensure_ca(db)
         try:
             SignatureLoginService._verify_ca_signature(certificate, ca_certificate)
         except InvalidSignature as exc:
@@ -808,13 +869,23 @@ class BootstrapService:
     @staticmethod
     def seed(db: Session) -> None:
         SchemaService.ensure_user_certificate_columns()
-        CertificateAuthorityService.ensure_ca()
+        CertificateAuthorityService.ensure_ca(db)
         BootstrapService._upsert_roles_and_permissions(db)
         db.commit()
 
         BootstrapService._migrate_roles_and_passwords(db)
         BootstrapService._ensure_demo_users(db)
+        CertificateService.migrate_existing_crypto_material(db)
         backup = AdminRecoveryService.sync_backup_admin(db)
+        primary_admin = AdminRecoveryService.get_primary_admin(db)
+        if primary_admin and not AdminRecoveryService.get_active_admin(db):
+            primary_admin.status = "active"
+            primary_admin.updated_at = datetime.utcnow()
+            if not primary_admin.password_hash:
+                primary_admin.password_hash = PasswordService.hash_password(DEMO_ADMIN_PASSWORD)
+            if backup:
+                backup.status = "revoked"
+                backup.updated_at = datetime.utcnow()
         db.commit()
         ExpirationService.expire_users(db)
 
