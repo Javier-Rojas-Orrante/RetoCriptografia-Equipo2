@@ -6,6 +6,28 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db import Base
 
 
+class Beneficiario(Base):
+    __tablename__ = "beneficiarios"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    nombre_completo: Mapped[str] = mapped_column(String(200), nullable=False)
+    pais_origen: Mapped[str] = mapped_column(String(100), nullable=False)
+    fecha_ingreso: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    area: Mapped[str] = mapped_column(
+        Enum("ADMINISTRACION", "LEGAL", "PSICOSOCIAL", "HUMANITARIO", "COMUNICACION", name="beneficiario_area"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        Enum("nuevo", "en_revision", "canalizado", "activo", name="beneficiario_status"),
+        nullable=False,
+        default="nuevo",
+    )
+    notas: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 class Role(Base):
     __tablename__ = "roles"
 

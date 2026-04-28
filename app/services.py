@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
 from app.db import engine
-from app.models import AuditLog, Permission, Role, RolePermission, SystemSecret, User
+from app.models import AuditLog, Beneficiario, Permission, Role, RolePermission, SystemSecret, User
 
 ROLE_DEFINITIONS = {
     "ADMIN": {
@@ -40,6 +40,7 @@ ROLE_DEFINITIONS = {
             ("documents", "view"),
             ("documents", "edit"),
             ("operations", "view"),
+            ("certificates", "view"),
         ],
     },
     "OPERATIVO": {
@@ -82,8 +83,36 @@ DEMO_USERS = [
         "password": DEMO_ADMIN_PASSWORD,
     },
     {
-        "full_name": "Cora Coordinadora",
-        "email": "coordinador@demo.local",
+        "full_name": "Coord. Administración",
+        "email": "coord.administracion@demo.local",
+        "role_code": "COORDINADOR",
+        "status": "active",
+        "password": DEFAULT_PASSWORD,
+    },
+    {
+        "full_name": "Coord. Legal",
+        "email": "coord.legal@demo.local",
+        "role_code": "COORDINADOR",
+        "status": "active",
+        "password": DEFAULT_PASSWORD,
+    },
+    {
+        "full_name": "Coord. Psicosocial",
+        "email": "coord.psicosocial@demo.local",
+        "role_code": "COORDINADOR",
+        "status": "active",
+        "password": DEFAULT_PASSWORD,
+    },
+    {
+        "full_name": "Coord. Humanitario",
+        "email": "coord.humanitario@demo.local",
+        "role_code": "COORDINADOR",
+        "status": "active",
+        "password": DEFAULT_PASSWORD,
+    },
+    {
+        "full_name": "Coord. Comunicación",
+        "email": "coord.comunicacion@demo.local",
         "role_code": "COORDINADOR",
         "status": "active",
         "password": DEFAULT_PASSWORD,
@@ -888,6 +917,7 @@ class BootstrapService:
                 backup.updated_at = datetime.utcnow()
         db.commit()
         ExpirationService.expire_users(db)
+        BeneficiarioService.seed_demo(db)
 
         for user in db.scalars(select(User).options(joinedload(User.role))).all():
             if not role_requires_crypto(user) or user.certificate_serial:
@@ -914,6 +944,90 @@ class BootstrapService:
         ):
             CertificateService.issue_for_user(db, backup, _demo_secret_for_user(backup))
         db.commit()
+
+
+class BeneficiarioService:
+    AREAS = ["ADMINISTRACION", "LEGAL", "PSICOSOCIAL", "HUMANITARIO", "COMUNICACION"]
+    STATUSES = ["nuevo", "en_revision", "canalizado", "activo"]
+
+    @staticmethod
+    def list_all(db: Session) -> list[Beneficiario]:
+        return list(db.scalars(select(Beneficiario).order_by(Beneficiario.fecha_ingreso.desc())).all())
+
+    @staticmethod
+    def list_by_area(db: Session, area: str) -> list[Beneficiario]:
+        return list(
+            db.scalars(
+                select(Beneficiario).where(Beneficiario.area == area).order_by(Beneficiario.fecha_ingreso.desc())
+            ).all()
+        )
+
+    @staticmethod
+    def create(
+        db: Session,
+        *,
+        nombre_completo: str,
+        pais_origen: str,
+        area: str,
+        notas: str | None = None,
+        created_by_user_id: int | None = None,
+    ) -> Beneficiario:
+        b = Beneficiario(
+            nombre_completo=nombre_completo.strip(),
+            pais_origen=pais_origen.strip(),
+            area=area,
+            notas=notas,
+            created_by_user_id=created_by_user_id,
+            fecha_ingreso=datetime.utcnow(),
+        )
+        db.add(b)
+        db.flush()
+        return b
+
+    @staticmethod
+    def update_status(db: Session, beneficiario_id: int, new_status: str) -> Beneficiario:
+        b = db.get(Beneficiario, beneficiario_id)
+        if not b:
+            raise ValueError("Beneficiario no encontrado")
+        b.status = new_status
+        b.updated_at = datetime.utcnow()
+        db.flush()
+        return b
+
+    @staticmethod
+    def delete(db: Session, beneficiario_id: int) -> None:
+        b = db.get(Beneficiario, beneficiario_id)
+        if not b:
+            raise ValueError("Beneficiario no encontrado")
+        db.delete(b)
+        db.flush()
+
+    @staticmethod
+    def seed_demo(db: Session) -> None:
+        if db.scalar(select(Beneficiario).limit(1)):
+            return  # already seeded
+        demo_records = [
+            ("María Guadalupe Torres", "Honduras", "PSICOSOCIAL", "activo", "Llegó con familia. En proceso de regularización."),
+            ("Carlos Enrique Fuentes", "El Salvador", "LEGAL", "en_revision", "Solicitud de asilo presentada, pendiente resolución."),
+            ("Aisha Balde", "Guinea Conakry", "HUMANITARIO", "nuevo", "Recién llegada, evaluación inicial pendiente."),
+            ("Roberto Díaz Pérez", "Venezuela", "ADMINISTRACION", "canalizado", "Canalizado a albergue temporal."),
+            ("Esperanza Morales", "Guatemala", "PSICOSOCIAL", "activo", "Asistiendo a talleres de integración."),
+            ("Yusuf Al-Hassan", "Siria", "LEGAL", "en_revision", "Documentación incompleta, en seguimiento."),
+            ("Lucía Ramírez", "Nicaragua", "HUMANITARIO", "activo", "Beneficiaria de apoyo alimentario mensual."),
+            ("Pedro Alvarado", "Honduras", "COMUNICACION", "canalizado", "Participando en programa de comunicación comunitaria."),
+            ("Fatima Diallo", "Mali", "LEGAL", "nuevo", "Primera cita con asesor legal agendada."),
+            ("Ana Patricia Soto", "El Salvador", "PSICOSOCIAL", "activo", "Atención psicológica semanal en curso."),
+        ]
+        for nombre, pais, area, status, notas in demo_records:
+            db.add(Beneficiario(
+                nombre_completo=nombre,
+                pais_origen=pais,
+                area=area,
+                status=status,
+                notas=notas,
+                fecha_ingreso=datetime.utcnow() - timedelta(days=demo_records.index((nombre, pais, area, status, notas)) * 7),
+            ))
+        db.flush()
 
 
 class UserService:
@@ -1050,6 +1164,16 @@ class UserService:
 
     @staticmethod
     def update_expiration(db: Session, user: User, end_date: datetime, new_secret: str = "") -> User:
+        # Expiration changes are not allowed for crypto roles (ADMIN/COORDINADOR).
+        # Their account end_date is tied to the X.509 certificate validity, which
+        # is a cryptographic property fixed at issuance and cannot be modified
+        # without re-issuing the certificate and invalidating existing signatures.
+        if role_requires_crypto(user):
+            raise ValueError(
+                "No se puede modificar la vigencia de un usuario con certificado X.509. "
+                "La fecha de expiracion esta sellada criptograficamente en el certificado. "
+                "Si necesitas extender el acceso, revocar y re-emitir un nuevo certificado desde la seccion Credencial."
+            )
         clean_end_date = _normalized_future_datetime(end_date)
         user.end_date = clean_end_date
         if user.status == "expired":
@@ -1058,13 +1182,6 @@ class UserService:
         AdminRecoveryService.sync_backup_admin(db)
         db.commit()
         db.refresh(user)
-        if role_requires_crypto(user):
-            if not new_secret.strip():
-                raise ValueError("Debes indicar una nueva contrasena para reemitir el .p12")
-            user.password_hash = PasswordService.hash_password(new_secret)
-            db.commit()
-            db.refresh(user)
-            return CertificateService.issue_for_user(db, user, new_secret, reissue=True)
         return user
 
     @staticmethod
