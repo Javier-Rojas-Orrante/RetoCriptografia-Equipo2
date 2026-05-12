@@ -15,12 +15,12 @@ from app.db import Base, engine
 from app.deps import get_db
 from app.schemas import AuditLogOut, MeOut, UserOut
 from app.services import (
+    AdminSignerService,
     AdminRecoveryService,
     AuditService,
     AuthorizationService,
     BeneficiarioService,
     BootstrapService,
-    CertificateAuthorityService,
     CertificateService,
     PasswordLoginService,
     SignatureLoginService,
@@ -1643,7 +1643,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
             </a>
             <a href="/ui/ca/certificate/view?as_user={actor.id}" class="sidebar-link">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              Certificado CA
+              Certificado firmante
             </a>
           </nav>
           <div class="sidebar-footer">
@@ -1702,12 +1702,12 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
           </div>
 
           <details class="collapsible-panel">
-            <summary><h2>Certificados de CA e hist&oacute;rico</h2><span class="summary-button">Abrir</span></summary>
+            <summary><h2>Certificados firmados e hist&oacute;rico</h2><span class="summary-button">Abrir</span></summary>
             <div class="panel-body" style="padding:14px 20px 20px;">
-              <p class="muted">ADMIN y COORDINADOR autentican con .p12. Aqu&iacute; puedes consultar el certificado de la CA y el hist&oacute;rico emitido.</p>
+              <p class="muted">ADMIN y COORDINADOR autentican con .p12. Aqu&iacute; puedes consultar el certificado autofirmado del administrador firmante y el hist&oacute;rico emitido.</p>
               <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;">
-                <a href="/ui/ca/certificate/view?as_user={actor.id}">Ver certificado CA</a>
-                <a href="/ui/ca/certificate?as_user={actor.id}">Descargar certificado CA (.pem)</a>
+                <a href="/ui/ca/certificate/view?as_user={actor.id}">Ver certificado del admin firmante</a>
+                <a href="/ui/ca/certificate?as_user={actor.id}">Descargar certificado del admin firmante (.pem)</a>
               </div>
               <ul style="margin-top:12px;font-size:13px;">{certificate_rows}</ul>
             </div>
@@ -2336,7 +2336,7 @@ def view_user_certificate(user_id: int, db: Session = Depends(get_db), actor=Dep
         raise HTTPException(status_code=404, detail="Certificate not found")
 
     back_href = "/dashboard" if is_active_admin(actor) else "/portal"
-    return HTMLResponse(render_certificate_page(f"Certificado legacy de {user.full_name}", summary, back_href))
+    return HTMLResponse(render_certificate_page(f"Certificado de {user.full_name}", summary, back_href))
 
 
 @app.get("/ui/users/{user_id}/certificate.pem")
@@ -2357,16 +2357,16 @@ def download_certificate_pem(user_id: int, db: Session = Depends(get_db), actor=
 @app.get("/ui/ca/certificate/view", response_class=HTMLResponse)
 def view_ca_certificate(db: Session = Depends(get_db), actor=Depends(_get_session_actor)):
     require_actor_permission(db, actor, "certificates", "view")
-    summary = CertificateAuthorityService.describe_ca_certificate(db)
+    summary = AdminSignerService.describe_active_signer_certificate(db)
     back_href = "/dashboard" if is_active_admin(actor) else "/portal"
-    return HTMLResponse(render_certificate_page("Certificado legacy de la CA interna", summary, back_href))
+    return HTMLResponse(render_certificate_page("Certificado autofirmado del administrador firmante", summary, back_href))
 
 
 @app.get("/ui/ca/certificate")
 def download_ca_certificate(db: Session = Depends(get_db), actor=Depends(_get_session_actor)):
     require_actor_permission(db, actor, "certificates", "view")
     return Response(
-        content=CertificateAuthorityService.get_ca_certificate_pem(db),
+        content=AdminSignerService.get_active_signer_certificate_pem(db),
         media_type="application/x-pem-file",
-        headers={"Content-Disposition": 'attachment; filename="casa-monarca-demo-ca.crt.pem"'},
+        headers={"Content-Disposition": 'attachment; filename="casa-monarca-admin-firmante.crt.pem"'},
     )

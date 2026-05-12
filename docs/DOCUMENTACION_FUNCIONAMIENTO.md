@@ -7,7 +7,7 @@ La demo usa:
 - `FastAPI` para rutas y UI HTML simple,
 - `SQLAlchemy` para persistencia,
 - `SQLite` como base local,
-- `cryptography` para CA interna, certificados X.509, `.p12` y prueba de posesion de llave privada.
+- `cryptography` para certificados X.509, `.p12`, firma del administrador y prueba de posesion de llave privada.
 
 El sistema actual se centra en identidad local, control de acceso, revocacion y recuperacion del administrador.
 
@@ -126,7 +126,7 @@ Reglas:
 
 - acepta correo o alias demo como `admin`,
 - exige `status == active`,
-- los roles criptograficos validan `.p12`, certificado emitido por la CA y firma RSA-PSS-SHA256 sobre un reto,
+- los roles criptograficos validan `.p12`, certificado autofirmado en administradores o firmado por administrador en coordinadores, y firma RSA-PSS-SHA256 sobre un reto,
 - los roles no criptograficos validan `password_hash` con PBKDF2-HMAC-SHA256.
 
 ## 6. Autorizacion
@@ -198,7 +198,7 @@ Decisiones:
 
 - emitir certificados para `ADMIN` y `COORDINADOR`,
 - construir y guardar `.p12`,
-- centralizar la CA y los `.p12` dentro de la base de datos,
+- centralizar el material del administrador firmante y los `.p12` dentro de la base de datos,
 - verificar la firma de la CA,
 - validar la firma del reto de login,
 - reemitir certificados cuando cambia la vigencia o se reactiva una cuenta revocada.

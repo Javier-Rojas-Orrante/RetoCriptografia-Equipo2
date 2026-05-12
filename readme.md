@@ -8,15 +8,15 @@ Demo minimalista en FastAPI para mostrar:
 - expiracion y reactivacion de cuentas,
 - respaldo espejo del administrador,
 - auditoria basica,
-- certificados X.509 emitidos por una CA interna para administradores y coordinadores,
-- material criptografico centralizado en la base de datos compartida.
+- certificados X.509 donde el administrador usa un certificado autofirmado y firma los certificados de coordinadores,
+- material criptografico centralizado con administrador firmante en la base de datos compartida.
 
 ## Estado actual
 
 `ADMIN` y `COORDINADOR` volvieron a usar autenticacion criptografica con `.p12`.
 `OPERATIVO` y `VOLUNTARIO` siguen con acceso por usuario o correo y contrasena.
 El panel admin ahora muestra usuarios en filas compactas expandibles para ordenar la gestion.
-La CA y los paquetes `.p12` se almacenan de forma centralizada en la base de datos.
+El material del administrador firmante y los paquetes `.p12` se almacenan de forma centralizada en la base de datos.
 
 ## Como correrlo
 
@@ -59,6 +59,7 @@ Tambien puedes entrar usando los correos completos:
 
 - [Manual de usuario](/Users/javier/Documents/New%20project/docs/USO_Y_FUNCIONAMIENTO.md)
 - [Documentacion de codigo fuente](/Users/javier/Documents/New%20project/docs/DOCUMENTACION_FUNCIONAMIENTO.md)
+- [Revision criptografica](/Users/javier/Documents/New%20project/docs/REVISION_CRIPTOGRAFICA.md)
 - [Guia de integracion (SDK)](/Users/javier/Documents/New%20project/docs/GUIA_INTEGRACION_SDK.md)
 - [Investigacion de recuperacion admin](/Users/javier/Documents/New%20project/docs/INVESTIGACION_RECUPERACION_ADMIN.md)
 - [Cierre de demo de viernes](/Users/javier/Documents/New%20project/docs/CIERRE_DEMO_VIERNES.md)

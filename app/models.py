@@ -54,6 +54,8 @@ class User(Base):
     certificate_not_after: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     p12_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
     p12_base64: Mapped[str | None] = mapped_column(Text, nullable=True)
+    certificate_issuer_pem: Mapped[str | None] = mapped_column(Text, nullable=True)
+    certificate_issuer_user_id: Mapped[int | None] = mapped_column(nullable=True)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_backup_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     mirror_source_user_id: Mapped[int | None] = mapped_column(nullable=True)

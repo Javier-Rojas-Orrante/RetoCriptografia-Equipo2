@@ -132,6 +132,7 @@ DEMO_USERS = [
         "password": DEFAULT_PASSWORD,
     },
 ]
+DEMO_USER_EMAILS = {item["email"] for item in DEMO_USERS}
 
 
 def role_requires_crypto(role_or_user) -> bool:
@@ -271,6 +272,8 @@ class SchemaService:
             "certificate_not_after": "DATETIME",
             "p12_path": "VARCHAR(255)",
             "p12_base64": "TEXT",
+            "certificate_issuer_pem": "TEXT",
+            "certificate_issuer_user_id": "INTEGER",
             "password_hash": "VARCHAR(255)",
             "is_backup_admin": "BOOLEAN NOT NULL DEFAULT 0",
             "mirror_source_user_id": "INTEGER",
@@ -371,7 +374,114 @@ class CertificateAuthorityService:
         )
 
 
+class AdminSignerService:
+    signer_key_prefix = "admin_signer_private_key_pem:"
+
+    @classmethod
+    def _secret_key(cls, user_id: int) -> str:
+        return f"{cls.signer_key_prefix}{user_id}"
+
+    @classmethod
+    def store_private_key(cls, db: Session, user_id: int, private_key: rsa.RSAPrivateKey) -> None:
+        private_key_pem = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        ).decode()
+        CertificateAuthorityService._set_secret(db, cls._secret_key(user_id), private_key_pem)
+
+    @classmethod
+    def load_private_key(cls, db: Session, user_id: int) -> rsa.RSAPrivateKey | None:
+        key_pem = CertificateAuthorityService._get_secret(db, cls._secret_key(user_id))
+        if not key_pem:
+            return None
+        private_key = serialization.load_pem_private_key(key_pem.encode(), password=None)
+        return private_key if isinstance(private_key, rsa.RSAPrivateKey) else None
+
+    @staticmethod
+    def get_active_signing_admin(db: Session) -> User | None:
+        return db.scalar(
+            select(User)
+            .options(joinedload(User.role))
+            .join(Role)
+            .where(Role.code == "ADMIN", User.status == "active")
+            .order_by(User.is_backup_admin.asc(), User.id.asc())
+            .limit(1)
+        )
+
+    @classmethod
+    def get_signing_material(cls, db: Session) -> tuple[User, rsa.RSAPrivateKey, x509.Certificate]:
+        admin_user = cls.get_active_signing_admin(db)
+        if not admin_user:
+            raise ValueError("No existe un administrador activo para firmar certificados")
+        if not admin_user.certificate_pem:
+            raise ValueError("El administrador activo no tiene certificado emitido")
+
+        private_key = cls.load_private_key(db, admin_user.id)
+        if private_key is None:
+            raise ValueError(
+                "El administrador activo no tiene su llave privada centralizada. "
+                "Reemite su certificado para continuar."
+            )
+
+        certificate = x509.load_pem_x509_certificate(admin_user.certificate_pem.encode())
+        return admin_user, private_key, certificate
+
+    @classmethod
+    def get_active_signer_certificate_pem(cls, db: Session) -> str:
+        admin_user = cls.get_active_signing_admin(db)
+        if not admin_user or not admin_user.certificate_pem:
+            raise ValueError("No existe un administrador firmante disponible")
+        return admin_user.certificate_pem
+
+    @classmethod
+    def describe_active_signer_certificate(cls, db: Session) -> dict:
+        pem_text = cls.get_active_signer_certificate_pem(db)
+        certificate = x509.load_pem_x509_certificate(pem_text.encode())
+        return _certificate_summary(certificate, pem_text)
+
+
 class CertificateService:
+    @staticmethod
+    def _verify_self_signed_certificate(certificate: x509.Certificate) -> None:
+        public_key = certificate.public_key()
+        if not isinstance(public_key, rsa.RSAPublicKey):
+            raise ValueError("El certificado no contiene una llave publica RSA")
+        public_key.verify(
+            certificate.signature,
+            certificate.tbs_certificate_bytes,
+            padding.PKCS1v15(),
+            certificate.signature_hash_algorithm,
+        )
+
+    @staticmethod
+    def uses_current_signing_policy(user: User) -> bool:
+        if not user.certificate_pem:
+            return False
+
+        certificate = x509.load_pem_x509_certificate(user.certificate_pem.encode())
+        if user.role and user.role.code == "ADMIN":
+            if certificate.subject != certificate.issuer:
+                return False
+            try:
+                CertificateService._verify_self_signed_certificate(certificate)
+            except (InvalidSignature, ValueError):
+                return False
+            return True
+
+        if user.role and user.role.code == "COORDINADOR":
+            if certificate.subject == certificate.issuer or not user.certificate_issuer_pem:
+                return False
+            try:
+                issuer_certificate = x509.load_pem_x509_certificate(user.certificate_issuer_pem.encode())
+                CertificateService._verify_self_signed_certificate(issuer_certificate)
+                SignatureLoginService._verify_ca_signature(certificate, issuer_certificate)
+            except (InvalidSignature, ValueError):
+                return False
+            return True
+
+        return True
+
     @staticmethod
     def issue_for_user(db: Session, user: User, password: str, reissue: bool = False) -> User:
         if not role_requires_crypto(user):
@@ -381,7 +491,6 @@ class CertificateService:
         if (user.p12_base64 or user.p12_path) and not reissue and user.certificate_serial:
             return user
 
-        ca_key, ca_cert = CertificateAuthorityService.ensure_ca(db)
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         now = datetime.now(UTC)
         if user.end_date is None:
@@ -398,49 +507,98 @@ class CertificateService:
             ]
         )
 
-        certificate = (
-            x509.CertificateBuilder()
-            .subject_name(subject)
-            .issuer_name(ca_cert.subject)
-            .public_key(private_key.public_key())
-            .serial_number(x509.random_serial_number())
-            .not_valid_before(now - timedelta(minutes=5))
-            .not_valid_after(valid_until)
-            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
-            .add_extension(
-                x509.KeyUsage(
-                    digital_signature=True,
-                    key_encipherment=True,
-                    content_commitment=False,
-                    data_encipherment=False,
-                    key_agreement=False,
-                    key_cert_sign=False,
-                    crl_sign=False,
-                    encipher_only=False,
-                    decipher_only=False,
-                ),
-                critical=True,
+        issuer_user_id: int | None = None
+        issuer_certificate: x509.Certificate | None = None
+        if user.role and user.role.code == "ADMIN":
+            certificate = (
+                x509.CertificateBuilder()
+                .subject_name(subject)
+                .issuer_name(subject)
+                .public_key(private_key.public_key())
+                .serial_number(x509.random_serial_number())
+                .not_valid_before(now - timedelta(minutes=5))
+                .not_valid_after(valid_until)
+                .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+                .add_extension(
+                    x509.KeyUsage(
+                        digital_signature=True,
+                        key_encipherment=True,
+                        content_commitment=False,
+                        data_encipherment=False,
+                        key_agreement=False,
+                        key_cert_sign=False,
+                        crl_sign=False,
+                        encipher_only=False,
+                        decipher_only=False,
+                    ),
+                    critical=True,
+                )
+                .add_extension(
+                    x509.ExtendedKeyUsage(
+                        [ExtendedKeyUsageOID.CLIENT_AUTH, ExtendedKeyUsageOID.EMAIL_PROTECTION]
+                    ),
+                    critical=False,
+                )
+                .add_extension(x509.SubjectAlternativeName([x509.RFC822Name(user.email)]), critical=False)
+                .sign(private_key=private_key, algorithm=hashes.SHA256())
             )
-            .add_extension(
-                x509.ExtendedKeyUsage(
-                    [ExtendedKeyUsageOID.CLIENT_AUTH, ExtendedKeyUsageOID.EMAIL_PROTECTION]
-                ),
-                critical=False,
+            issuer_user_id = user.id
+        else:
+            signer_admin, signer_key, signer_certificate = AdminSignerService.get_signing_material(db)
+            if signer_admin.id == user.id:
+                raise ValueError("El administrador firmante no puede coincidir con el coordinador emitido")
+            certificate = (
+                x509.CertificateBuilder()
+                .subject_name(subject)
+                .issuer_name(signer_certificate.subject)
+                .public_key(private_key.public_key())
+                .serial_number(x509.random_serial_number())
+                .not_valid_before(now - timedelta(minutes=5))
+                .not_valid_after(valid_until)
+                .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+                .add_extension(
+                    x509.KeyUsage(
+                        digital_signature=True,
+                        key_encipherment=True,
+                        content_commitment=False,
+                        data_encipherment=False,
+                        key_agreement=False,
+                        key_cert_sign=False,
+                        crl_sign=False,
+                        encipher_only=False,
+                        decipher_only=False,
+                    ),
+                    critical=True,
+                )
+                .add_extension(
+                    x509.ExtendedKeyUsage(
+                        [ExtendedKeyUsageOID.CLIENT_AUTH, ExtendedKeyUsageOID.EMAIL_PROTECTION]
+                    ),
+                    critical=False,
+                )
+                .add_extension(x509.SubjectAlternativeName([x509.RFC822Name(user.email)]), critical=False)
+                .sign(private_key=signer_key, algorithm=hashes.SHA256())
             )
-            .add_extension(x509.SubjectAlternativeName([x509.RFC822Name(user.email)]), critical=False)
-            .sign(private_key=ca_key, algorithm=hashes.SHA256())
-        )
+            issuer_user_id = signer_admin.id
+            issuer_certificate = signer_certificate
 
         p12_bytes = pkcs12.serialize_key_and_certificates(
             name=user.email.encode(),
             key=private_key,
             cert=certificate,
-            cas=[ca_cert],
+            cas=[issuer_certificate] if issuer_certificate is not None else None,
             encryption_algorithm=serialization.BestAvailableEncryption(password.encode()),
         )
 
+        certificate_pem = certificate.public_bytes(serialization.Encoding.PEM).decode()
         user.certificate_serial = format(certificate.serial_number, "x")
-        user.certificate_pem = certificate.public_bytes(serialization.Encoding.PEM).decode()
+        user.certificate_pem = certificate_pem
+        user.certificate_issuer_pem = (
+            issuer_certificate.public_bytes(serialization.Encoding.PEM).decode()
+            if issuer_certificate is not None
+            else certificate_pem
+        )
+        user.certificate_issuer_user_id = issuer_user_id
         user.certificate_not_before = certificate.not_valid_before_utc.replace(tzinfo=None)
         user.certificate_not_after = certificate.not_valid_after_utc.replace(tzinfo=None)
         user.p12_base64 = base64.b64encode(p12_bytes).decode()
@@ -448,6 +606,10 @@ class CertificateService:
         user.updated_at = datetime.utcnow()
         db.commit()
         db.refresh(user)
+
+        if user.role and user.role.code == "ADMIN":
+            AdminSignerService.store_private_key(db, user.id, private_key)
+
         return user
 
     @staticmethod
@@ -512,7 +674,7 @@ class SignatureLoginService:
     def _verify_ca_signature(certificate: x509.Certificate, ca_certificate: x509.Certificate) -> None:
         ca_public_key = ca_certificate.public_key()
         if not isinstance(ca_public_key, rsa.RSAPublicKey):
-            raise ValueError("La CA interna no usa una llave RSA valida")
+            raise ValueError("El certificado emisor no usa una llave RSA valida")
 
         ca_public_key.verify(
             certificate.signature,
@@ -560,11 +722,32 @@ class SignatureLoginService:
             if certificate.not_valid_after_utc.replace(tzinfo=None) != user.end_date.replace(microsecond=0):
                 raise ValueError("El certificado no coincide con la vigencia actual del usuario")
 
-        _ca_key, ca_certificate = CertificateAuthorityService.ensure_ca(db)
-        try:
-            SignatureLoginService._verify_ca_signature(certificate, ca_certificate)
-        except InvalidSignature as exc:
-            raise ValueError("La CA interna no reconoce la firma del certificado") from exc
+        if user.role.code == "ADMIN":
+            if certificate.subject != certificate.issuer:
+                raise ValueError("El certificado del administrador debe ser autofirmado")
+            try:
+                CertificateService._verify_self_signed_certificate(certificate)
+            except InvalidSignature as exc:
+                raise ValueError("La autofirma del certificado del administrador no es valida") from exc
+        else:
+            if certificate.subject == certificate.issuer:
+                raise ValueError("Los certificados de coordinador no deben ser autofirmados")
+            if user.certificate_issuer_pem:
+                issuer_certificate = x509.load_pem_x509_certificate(user.certificate_issuer_pem.encode())
+                try:
+                    CertificateService._verify_self_signed_certificate(issuer_certificate)
+                except InvalidSignature as exc:
+                    raise ValueError("El certificado del administrador firmante no es valido") from exc
+                try:
+                    SignatureLoginService._verify_ca_signature(certificate, issuer_certificate)
+                except InvalidSignature as exc:
+                    raise ValueError("El certificado no fue firmado por el administrador registrado") from exc
+            else:
+                _ca_key, ca_certificate = CertificateAuthorityService.ensure_ca(db)
+                try:
+                    SignatureLoginService._verify_ca_signature(certificate, ca_certificate)
+                except InvalidSignature as exc:
+                    raise ValueError("La firma del certificado no coincide con el emisor esperado") from exc
 
         challenge = f"login:{user.id}:{user.email}:{now.isoformat()}".encode()
         signature = private_key.sign(
@@ -723,6 +906,7 @@ class AdminRecoveryService:
         if role_requires_crypto(backup) and (
             not backup.certificate_serial
             or not backup.certificate_not_after
+            or not CertificateService.uses_current_signing_policy(backup)
             or (backup.end_date and backup.certificate_not_after.replace(microsecond=0) != backup.end_date.replace(microsecond=0))
         ):
             CertificateService.issue_for_user(db, backup, DEMO_BACKUP_ADMIN_PASSWORD, reissue=True)
@@ -801,6 +985,10 @@ class PasswordLoginService:
 
 
 class BootstrapService:
+    @staticmethod
+    def _can_manage_demo_certificate(user: User) -> bool:
+        return user.is_backup_admin or user.email in DEMO_USER_EMAILS
+
     @staticmethod
     def _upsert_roles_and_permissions(db: Session) -> None:
         role_by_code = {role.code: role for role in db.scalars(select(Role)).all()}
@@ -919,13 +1107,22 @@ class BootstrapService:
         ExpirationService.expire_users(db)
         BeneficiarioService.seed_demo(db)
 
-        for user in db.scalars(select(User).options(joinedload(User.role))).all():
-            if not role_requires_crypto(user) or user.certificate_serial:
+        users = list(db.scalars(select(User).options(joinedload(User.role))).all())
+        users.sort(key=lambda user: (0 if user.role.code == "ADMIN" else 1, user.id))
+        for user in users:
+            if not role_requires_crypto(user):
+                continue
+            can_auto_manage = BootstrapService._can_manage_demo_certificate(user)
+            needs_issue = not user.certificate_serial
+            needs_policy_refresh = can_auto_manage and user.certificate_serial and not CertificateService.uses_current_signing_policy(user)
+            if not needs_issue and not needs_policy_refresh:
                 continue
             if user.end_date is not None and user.end_date <= datetime.utcnow():
                 if user.status != "expired":
                     user.status = "expired"
                     user.updated_at = datetime.utcnow()
+                continue
+            if not can_auto_manage:
                 continue
             if user.end_date is None:
                 user.end_date = (datetime.utcnow() + timedelta(days=DEFAULT_CRYPTO_VALIDITY_DAYS)).replace(
@@ -934,15 +1131,12 @@ class BootstrapService:
                 db.commit()
                 db.refresh(user)
             if user.status in {"active", "pending", "revoked"}:
-                CertificateService.issue_for_user(db, user, _demo_secret_for_user(user))
-        if (
-            backup
-            and role_requires_crypto(backup)
-            and not backup.certificate_serial
-            and backup.end_date
-            and backup.end_date > datetime.utcnow()
-        ):
-            CertificateService.issue_for_user(db, backup, _demo_secret_for_user(backup))
+                CertificateService.issue_for_user(
+                    db,
+                    user,
+                    _demo_secret_for_user(user),
+                    reissue=needs_policy_refresh,
+                )
         db.commit()
 
 

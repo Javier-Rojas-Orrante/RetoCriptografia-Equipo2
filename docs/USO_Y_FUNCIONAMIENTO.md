@@ -161,10 +161,10 @@ Tambien puedes consultar:
 - ver certificado de usuario,
 - descargar PEM,
 - descargar `.p12`,
-- ver certificado de la CA interna.
+- ver certificado autofirmado del administrador firmante.
 
 Estas acciones solo aparecen para administracion.
-La CA y los `.p12` ya no dependen del disco local de una sola maquina; viven en la base compartida.
+El certificado autofirmado del administrador firmante y los `.p12` ya no dependen del disco local de una sola maquina; viven en la base compartida.
 
 ## 13. Errores comunes
 
