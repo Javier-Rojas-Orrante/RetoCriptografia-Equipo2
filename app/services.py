@@ -1046,6 +1046,9 @@ class AdminRecoveryService:
 
     @classmethod
     def sync_backup_admin(cls, db: Session) -> User | None:
+        if not settings.seed_demo_data:
+            return None
+
         primary = cls.get_primary_admin(db)
         if not primary:
             return None
@@ -1155,7 +1158,7 @@ class PasswordLoginService:
             raise ValueError("Usuario no registrado")
         if user.status != "active":
             raise ValueError(f"La cuenta no esta activa: {user.status}")
-        if role_requires_crypto(user):
+        if role_requires_crypto(user) and user.certificate_serial:
             raise ValueError("Este usuario requiere autenticacion con private_key.pem y certificate.pem")
         if not PasswordService.verify_password(password, user.password_hash):
             raise ValueError("Contrasena incorrecta")
@@ -1165,7 +1168,7 @@ class PasswordLoginService:
 class BootstrapService:
     @staticmethod
     def _can_manage_demo_certificate(user: User) -> bool:
-        return user.is_backup_admin or user.email in DEMO_USER_EMAILS
+        return settings.seed_demo_data and (user.is_backup_admin or user.email in DEMO_USER_EMAILS)
 
     @staticmethod
     def _upsert_roles_and_permissions(db: Session) -> None:
@@ -1219,7 +1222,7 @@ class BootstrapService:
                 user.role_id = target_role.id
                 user.role = target_role
 
-            if not user.password_hash:
+            if settings.seed_demo_data and not user.password_hash and (user.is_backup_admin or user.email in DEMO_USER_EMAILS):
                 demo_password = (
                     DEMO_BACKUP_ADMIN_PASSWORD
                     if user.is_backup_admin
@@ -1262,6 +1265,62 @@ class BootstrapService:
             db.flush()
 
     @staticmethod
+    def _ensure_bootstrap_admin(db: Session) -> User | None:
+        email = settings.bootstrap_admin_email
+        if not email:
+            return None
+
+        admin_role = db.scalar(select(Role).where(Role.code == "ADMIN").limit(1))
+        if not admin_role:
+            raise ValueError("No se pudo ubicar el rol ADMIN para inicializar el administrador")
+
+        user = db.scalar(
+            select(User)
+            .options(joinedload(User.role))
+            .where(User.email == email)
+            .limit(1)
+        )
+        if user:
+            if not user.role or user.role.code != "ADMIN":
+                raise ValueError(
+                    "BOOTSTRAP_ADMIN_EMAIL ya existe con un rol distinto a ADMIN. "
+                    "Usa otro correo o corrige ese usuario antes de desplegar."
+                )
+            if user.status != "active":
+                raise ValueError(
+                    "BOOTSTRAP_ADMIN_EMAIL ya existe pero no esta activo. "
+                    "Reactiva esa cuenta manualmente o define otro correo de bootstrap."
+                )
+            if user.end_date is None:
+                user.end_date = (datetime.utcnow() + timedelta(days=DEFAULT_CRYPTO_VALIDITY_DAYS)).replace(
+                    microsecond=0
+                )
+            if not user.password_hash:
+                if not settings.bootstrap_admin_password:
+                    raise ValueError("BOOTSTRAP_ADMIN_PASSWORD es obligatorio para completar el acceso inicial")
+                user.password_hash = PasswordService.hash_password(settings.bootstrap_admin_password)
+            user.updated_at = datetime.utcnow()
+            db.flush()
+            return user
+
+        if not settings.bootstrap_admin_password:
+            raise ValueError("BOOTSTRAP_ADMIN_PASSWORD es obligatorio para crear el administrador inicial")
+
+        user = User(
+            full_name=settings.bootstrap_admin_full_name,
+            email=email,
+            role_id=admin_role.id,
+            status="active",
+            end_date=(datetime.utcnow() + timedelta(days=DEFAULT_CRYPTO_VALIDITY_DAYS)).replace(microsecond=0),
+            password_hash=PasswordService.hash_password(settings.bootstrap_admin_password),
+            is_backup_admin=False,
+        )
+        db.add(user)
+        db.flush()
+        user.role = admin_role
+        return user
+
+    @staticmethod
     def seed(db: Session) -> None:
         SchemaService.ensure_user_certificate_columns()
         CertificateAuthorityService.ensure_ca(db)
@@ -1269,21 +1328,34 @@ class BootstrapService:
         db.commit()
 
         BootstrapService._migrate_roles_and_passwords(db)
-        BootstrapService._ensure_demo_users(db)
+        if settings.seed_demo_data:
+            BootstrapService._ensure_demo_users(db)
+        else:
+            BootstrapService._ensure_bootstrap_admin(db)
+
+        has_visible_user = db.scalar(select(User.id).where(User.is_backup_admin.is_(False)).limit(1))
+        if not has_visible_user:
+            raise ValueError(
+                "No hay usuarios iniciales configurados. Define BOOTSTRAP_ADMIN_EMAIL y "
+                "BOOTSTRAP_ADMIN_PASSWORD o activa SEED_DEMO_DATA."
+            )
+
         CertificateService.migrate_existing_crypto_material(db)
         backup = AdminRecoveryService.sync_backup_admin(db)
-        primary_admin = AdminRecoveryService.get_primary_admin(db)
-        if primary_admin and not AdminRecoveryService.get_active_admin(db):
-            primary_admin.status = "active"
-            primary_admin.updated_at = datetime.utcnow()
-            if not primary_admin.password_hash:
-                primary_admin.password_hash = PasswordService.hash_password(DEMO_ADMIN_PASSWORD)
-            if backup:
-                backup.status = "revoked"
-                backup.updated_at = datetime.utcnow()
+        if settings.seed_demo_data:
+            primary_admin = AdminRecoveryService.get_primary_admin(db)
+            if primary_admin and not AdminRecoveryService.get_active_admin(db):
+                primary_admin.status = "active"
+                primary_admin.updated_at = datetime.utcnow()
+                if not primary_admin.password_hash:
+                    primary_admin.password_hash = PasswordService.hash_password(DEMO_ADMIN_PASSWORD)
+                if backup:
+                    backup.status = "revoked"
+                    backup.updated_at = datetime.utcnow()
         db.commit()
         ExpirationService.expire_users(db)
-        BeneficiarioService.seed_demo(db)
+        if settings.seed_demo_data:
+            BeneficiarioService.seed_demo(db)
 
         users = list(db.scalars(select(User).options(joinedload(User.role))).all())
         users.sort(key=lambda user: (0 if user.role.code == "ADMIN" else 1, user.id))

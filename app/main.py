@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from datetime import datetime
 from html import escape
+from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import Cookie, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
@@ -30,6 +31,9 @@ from app.services import (
 from app.models import Role
 
 
+APP_DIR = Path(__file__).resolve().parent
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
@@ -39,7 +43,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 
 # ── Session cookie (signed with HMAC, 8-hour expiry) ──────────────────────
 _SESSION_COOKIE = "cm_session"
@@ -70,7 +74,9 @@ def _login_redirect(response: RedirectResponse, user_id: int, notice: str | None
         _SESSION_COOKIE, token,
         max_age=_SESSION_MAX_AGE,
         httponly=True,
+        secure=settings.session_cookie_secure_resolved,
         samesite="lax",
+        path="/",
     )
     return response
 
@@ -618,6 +624,46 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
       <line x1="40" y1="10" x2="50" y2="4" stroke="#1a2332" stroke-width="1.5" stroke-linecap="round"/>
     </svg>"""
     error_html = f"<div class='error'>{escape(error)}</div>" if error else ""
+    login_hint = (
+        "Admin y Coordinador entran con <code>private_key.pem</code> + <code>certificate.pem</code>; "
+        "Operativo y Voluntario con usuario + contrase&ntilde;a."
+    )
+    if not settings.seed_demo_data:
+        login_hint = (
+            "Admin y Coordinador entran con <code>private_key.pem</code> + <code>certificate.pem</code>. "
+            "Si el administrador inicial a&uacute;n no emite su certificado, puede entrar temporalmente con su contrase&ntilde;a."
+        )
+    password_hint = "Contrase&ntilde;a de la llave privada"
+    if not settings.seed_demo_data:
+        password_hint = "Contrase&ntilde;a de la llave privada o clave inicial del administrador"
+    credentials_panel = """
+          <details style="margin-top:18px;">
+            <summary>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              Credenciales demo
+            </summary>
+            <div style="margin-top:10px;padding:12px 14px;background:#faf7f3;border:1px solid #e5ddd3;border-radius:8px;display:grid;gap:5px;font-size:12px;color:#6b7280;">
+              <span><code>admin / admin</code> &mdash; bypass sin certificado</span>
+              <span><code>admin@demo.local</code> + private_key.pem + certificate.pem + <code>admin</code></span>
+              <span><code>coord.legal@demo.local</code> + private_key.pem + certificate.pem + <code>demo1234</code></span>
+              <span><code>operativo / demo1234</code></span>
+              <span><code>voluntario / demo1234</code></span>
+            </div>
+          </details>
+    """
+    if not settings.seed_demo_data:
+        credentials_panel = """
+          <details style="margin-top:18px;">
+            <summary>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              Primer acceso en producci&oacute;n
+            </summary>
+            <div style="margin-top:10px;padding:12px 14px;background:#faf7f3;border:1px solid #e5ddd3;border-radius:8px;display:grid;gap:5px;font-size:12px;color:#6b7280;">
+              <span>Define <code>BOOTSTRAP_ADMIN_EMAIL</code> y <code>BOOTSTRAP_ADMIN_PASSWORD</code> al desplegar.</span>
+              <span>Ese administrador puede entrar con contrase&ntilde;a en la etapa inicial, hasta emitir su <code>private_key.pem</code> y <code>certificate.pem</code>.</span>
+            </div>
+          </details>
+        """
     return f"""<!doctype html>
     <html lang="es">
     <head>
@@ -677,21 +723,8 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
       <div class="login-right">
         <div class="card">
           <div class="form-title">Iniciar sesi&oacute;n</div>
-          <div class="form-sub">Admin y Coordinador entran con <code>private_key.pem</code> + <code>certificate.pem</code>; Operativo y Voluntario con usuario + contrase&ntilde;a.</div>
-
-          <details style="margin-top:18px;">
-            <summary>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-              Credenciales demo
-            </summary>
-            <div style="margin-top:10px;padding:12px 14px;background:#faf7f3;border:1px solid #e5ddd3;border-radius:8px;display:grid;gap:5px;font-size:12px;color:#6b7280;">
-              <span><code>admin / admin</code> &mdash; bypass sin certificado</span>
-              <span><code>admin@demo.local</code> + private_key.pem + certificate.pem + <code>admin</code></span>
-              <span><code>coord.legal@demo.local</code> + private_key.pem + certificate.pem + <code>demo1234</code></span>
-              <span><code>operativo / demo1234</code></span>
-              <span><code>voluntario / demo1234</code></span>
-            </div>
-          </details>
+          <div class="form-sub">{login_hint}</div>
+          {credentials_panel}
 
           {render_notice(notice)}
           {error_html}
@@ -709,7 +742,7 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
               <input name="certificate_file" type="file" accept=".pem,.crt">
             </label>
             <label>Contrase&ntilde;a
-              <span class="label-hint">Contrase&ntilde;a de la llave privada</span>
+              <span class="label-hint">{password_hint}</span>
               <input name="password" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" required autocomplete="current-password">
             </label>
             <button type="submit" class="btn">Entrar</button>
@@ -1975,7 +2008,13 @@ async def login(
     has_private_key = private_key_file is not None and bool(private_key_file.filename)
     has_certificate = certificate_file is not None and bool(certificate_file.filename)
 
-    if identifier.strip().lower() == "admin" and password == "admin" and not has_private_key and not has_certificate:
+    if (
+        settings.demo_admin_bypass_enabled
+        and identifier.strip().lower() == "admin"
+        and password == "admin"
+        and not has_private_key
+        and not has_certificate
+    ):
         admin = get_actor_or_404(db, None)
         if not is_active_admin(admin):
             return HTMLResponse(render_login_page("El administrador demo no esta activo"), status_code=403)
@@ -2182,7 +2221,7 @@ def admin_register_user(
 @app.get("/logout")
 def logout():
     resp = RedirectResponse(url="/login", status_code=303)
-    resp.delete_cookie(_SESSION_COOKIE)
+    resp.delete_cookie(_SESSION_COOKIE, path="/", secure=settings.session_cookie_secure_resolved, samesite="lax")
     return resp
 
 
