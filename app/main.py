@@ -97,7 +97,7 @@ NOTICE_MESSAGES = {
     "expiration-updated": "La fecha de expiracion fue actualizada.",
     "role-updated": "El rol del usuario fue actualizado.",
     "recovery-activated": "El administrador espejo ya esta activo. El admin principal fue revocado y debe regenerarse un nuevo respaldo.",
-    "certificate-issued": "El certificado y el .p12 del usuario fueron emitidos o reemitidos.",
+    "certificate-issued": "El material criptografico del usuario fue emitido o reemitido.",
     "crypto-login": "Identidad verificada con el certificado criptografico del usuario.",
     "beneficiario-creado": "Beneficiario registrado correctamente. Ya está visible para el equipo operativo.",
     "registro-enviado": "Solicitud de acceso enviada. Un administrador revisará tu cuenta y te notificará cuando esté activa.",
@@ -259,6 +259,109 @@ def render_certificate_page(title: str, summary: dict, back_href: str) -> str:
         </main>
       </body>
     </html>
+    """
+
+
+def _crypto_file_link(href: str, label: str) -> str:
+    return f'<a href="{escape(href)}">{escape(label)}</a>'
+
+
+def _crypto_file_state(user, viewer_id: int) -> str:
+    query = f"?as_user={viewer_id}"
+    items = []
+
+    public_key_pem = CertificateService.get_user_public_key_pem(user)
+
+    if CertificateService.private_key_download_available(user):
+        items.append(_crypto_file_link(f"/ui/users/{user.id}/private-key.pem{query}", "private_key.pem"))
+        items.append("<span class='crypto-once'>entrega unica</span>")
+    elif user.private_key_delivered_at:
+        items.append("<span class='crypto-delivered'>private_key.pem entregada</span>")
+    else:
+        items.append("<span class='crypto-missing'>private_key.pem pendiente</span>")
+
+    if public_key_pem:
+        items.append(_crypto_file_link(f"/ui/users/{user.id}/public-key.pem{query}", "public_key.pem"))
+    else:
+        items.append("<span class='crypto-missing'>public_key.pem pendiente</span>")
+
+    if user.certificate_pem:
+        items.append(_crypto_file_link(f"/ui/users/{user.id}/certificate.pem{query}", "certificate.pem"))
+    else:
+        items.append("<span class='crypto-missing'>certificate.pem pendiente</span>")
+
+    return " · ".join(items)
+
+
+def _render_crypto_flow(user, viewer_id: int, issuer_name: str | None = None, verified: bool = False) -> str:
+    material = CertificateService.describe_crypto_material(user, issuer_name=issuer_name)
+    if not material:
+        return "<p class='muted'>Acceso con usuario y contrasena.</p>"
+
+    verified_chip = (
+        "<span class='crypto-pill crypto-pill-ok'>verificado en esta sesion</span>" if verified else ""
+    )
+    signer_view_href = None
+    if user.certificate_pem and user.role.code == "ADMIN":
+        signer_view_href = f"/ui/users/{user.id}/certificate/view?as_user={viewer_id}"
+    elif user.certificate_issuer_user_id and viewer_id != user.id:
+        signer_view_href = f"/ui/users/{user.certificate_issuer_user_id}/certificate/view?as_user={viewer_id}"
+    signer_summary = (
+        f"{escape(material['signed_by'])} · {escape(material['certificate_signature_algorithm'])}"
+        if material["has_certificate"]
+        else "pendiente"
+    )
+    verify_summary = (
+        f"{escape(material['challenge_signed_with'])} -> {escape(material['challenge_verified_with'])}"
+    )
+    if signer_view_href:
+        signer_summary = (
+            f"{_crypto_file_link(signer_view_href, material['signed_by'])} · "
+            f"{escape(material['certificate_signature_algorithm'])}"
+        )
+
+    return f"""
+    <div class="crypto-flow">
+      <div class="crypto-row">
+        <span class="crypto-step-name">Otorgar identidad</span>
+        <div class="crypto-step-body">
+          <div class="crypto-step-main">{_crypto_file_state(user, viewer_id)}</div>
+          <div class="crypto-step-meta">
+            <span>{escape(material['key_algorithm'])}</span>
+            <span>serial {escape(material['serial'] or 'pendiente')}</span>
+          </div>
+        </div>
+      </div>
+      <div class="crypto-row">
+        <span class="crypto-step-name">Firmar certificado</span>
+        <div class="crypto-step-body">
+          <div class="crypto-step-main">{signer_summary}</div>
+          <div class="crypto-step-meta">
+            <span>firma con {escape(material['signed_with'])}</span>
+            <span>verifica con {escape(material['signer_verified_with'])}</span>
+          </div>
+        </div>
+      </div>
+      <div class="crypto-row">
+        <span class="crypto-step-name">Entrar</span>
+        <div class="crypto-step-body">
+          <div class="crypto-step-main">{escape(material['login_artifact'])} {verified_chip}</div>
+          <div class="crypto-step-meta">
+            <span>ADMIN y COORDINADOR</span>
+            {'<span>' + _crypto_file_link(f"/ui/users/{user.id}/certificate.p12?as_user={viewer_id}", 'respaldo .p12') + '</span>' if material['has_p12'] else ''}
+          </div>
+        </div>
+      </div>
+      <div class="crypto-row">
+        <span class="crypto-step-name">Verificar</span>
+        <div class="crypto-step-body">
+          <div class="crypto-step-main">{verify_summary}</div>
+          <div class="crypto-step-meta">
+            <span>reto RSA-PSS-SHA256</span>
+          </div>
+        </div>
+      </div>
+    </div>
     """
 
 
@@ -437,12 +540,24 @@ def base_page(title: str, body: str, actor=None) -> str:
           .muted {{ color: var(--muted); font-size: 13px; }}
           code {{ background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-family: 'Courier New', monospace; font-size: 12px; word-break: break-all; }}
           hr {{ border: none; border-top: 1px solid var(--border); margin: 16px 0; }}
+          .crypto-flow {{ display: flex; flex-direction: column; border-top: 1px solid var(--border); }}
+          .crypto-row {{ display: grid; grid-template-columns: 132px 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }}
+          .crypto-step-name {{ font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }}
+          .crypto-step-body {{ display: flex; flex-direction: column; gap: 4px; min-width: 0; }}
+          .crypto-step-main {{ font-size: 13px; color: var(--text); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }}
+          .crypto-step-meta {{ font-size: 12px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }}
+          .crypto-pill {{ display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid; }}
+          .crypto-pill-ok {{ background: var(--ok-bg); color: var(--ok); border-color: var(--ok-border); }}
+          .crypto-missing {{ color: var(--muted); font-size: 12px; }}
+          .crypto-once {{ color: var(--warn); font-size: 11px; font-weight: 600; }}
+          .crypto-delivered {{ color: var(--muted); font-size: 12px; }}
 
           /* ─── Responsive ──────────────────────────────── */
           @media (max-width: 700px) {{
             .sidebar {{ display: none; }}
             .page-wrapper {{ margin-left: 0; }}
             main {{ padding: 20px 14px 60px; }}
+            .crypto-row {{ grid-template-columns: 1fr; gap: 6px; }}
           }}
         </style>
       </head>
@@ -469,7 +584,7 @@ def base_page(title: str, body: str, actor=None) -> str:
             <span class="sidebar-section-label">En esta p&aacute;gina</span>
             <a href="#certificados" class="sidebar-link">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              Certificado
+              Flujo criptogr&aacute;fico
             </a>
             <a href="#beneficiarios" class="sidebar-link">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -562,7 +677,7 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
       <div class="login-right">
         <div class="card">
           <div class="form-title">Iniciar sesi&oacute;n</div>
-          <div class="form-sub">Ingresa tus credenciales para acceder al sistema</div>
+          <div class="form-sub">Admin y Coordinador entran con <code>private_key.pem</code> + <code>certificate.pem</code>; Operativo y Voluntario con usuario + contrase&ntilde;a.</div>
 
           <details style="margin-top:18px;">
             <summary>
@@ -571,8 +686,8 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
             </summary>
             <div style="margin-top:10px;padding:12px 14px;background:#faf7f3;border:1px solid #e5ddd3;border-radius:8px;display:grid;gap:5px;font-size:12px;color:#6b7280;">
               <span><code>admin / admin</code> &mdash; bypass sin certificado</span>
-              <span><code>admin@demo.local</code> + .p12 + <code>admin</code></span>
-              <span><code>coord.legal@demo.local</code> + .p12 + <code>demo1234</code></span>
+              <span><code>admin@demo.local</code> + private_key.pem + certificate.pem + <code>admin</code></span>
+              <span><code>coord.legal@demo.local</code> + private_key.pem + certificate.pem + <code>demo1234</code></span>
               <span><code>operativo / demo1234</code></span>
               <span><code>voluntario / demo1234</code></span>
             </div>
@@ -585,12 +700,16 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
             <label>Correo o usuario
               <input name="identifier" placeholder="usuario@ejemplo.com" required autocomplete="username">
             </label>
-            <label>Archivo .p12
+            <label>private_key.pem
               <span class="label-hint">Solo para Admin y Coordinador</span>
-              <input name="p12_file" type="file" accept=".p12,.pfx">
+              <input name="private_key_file" type="file" accept=".pem,.key">
+            </label>
+            <label>certificate.pem
+              <span class="label-hint">Certificado X.509 del usuario</span>
+              <input name="certificate_file" type="file" accept=".pem,.crt">
             </label>
             <label>Contrase&ntilde;a
-              <span class="label-hint">O clave del archivo .p12</span>
+              <span class="label-hint">Contrase&ntilde;a de la llave privada</span>
               <input name="password" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" required autocomplete="current-password">
             </label>
             <button type="submit" class="btn">Entrar</button>
@@ -699,7 +818,7 @@ def render_admin_register_page(actor, roles, error: str | None = None) -> str:
       <div class="card" style="padding:32px;">
         <div style="margin-bottom:24px;">
           <h1 style="margin-bottom:6px;">Otorgar registro</h1>
-          <p class="muted">Crea la cuenta en estado <code>pending</code>. ADMIN y COORDINADOR reciben certificado .p12; OPERATIVO y VOLUNTARIO usan solo contrase&ntilde;a.</p>
+          <p class="muted">Crea la cuenta en estado <code>pending</code>. ADMIN y COORDINADOR reciben <code>private_key.pem</code> como entrega &uacute;nica, m&aacute;s <code>public_key.pem</code> y <code>certificate.pem</code>; <code>certificate.p12</code> queda como respaldo. OPERATIVO y VOLUNTARIO usan solo contrase&ntilde;a.</p>
         </div>
         {error_html}
         <form method="post" action="/admin/register" class="stack">
@@ -714,7 +833,7 @@ def render_admin_register_page(actor, roles, error: str | None = None) -> str:
           </div>
           <label>
             Contrase&ntilde;a inicial
-            <span class="muted" style="font-weight:400;font-size:12px;margin-top:-2px;">O clave del archivo .p12 para roles criptogr&aacute;ficos</span>
+            <span class="muted" style="font-weight:400;font-size:12px;margin-top:-2px;">Clave del material criptogr&aacute;fico para roles criptogr&aacute;ficos</span>
             <input name="credential_secret" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" required>
           </label>
           <button type="submit" style="padding:10px;font-size:14px;margin-top:8px;">Crear usuario</button>
@@ -725,55 +844,38 @@ def render_admin_register_page(actor, roles, error: str | None = None) -> str:
     return base_page("Otorgar registro · Casa Monarca", body)
 
 
-def render_portal_page(actor, permissions, logs, notice: str | None = None, verified: bool = False, beneficiarios=None) -> str:
+def render_portal_page(
+    actor,
+    permissions,
+    logs,
+    notice: str | None = None,
+    verified: bool = False,
+    beneficiarios=None,
+    issuer_name: str | None = None,
+) -> str:
     permission_text = ", ".join(f"{item['resource']}:{item['action']}" for item in permissions) or "sin permisos"
-    verified_html = "<div class='ok' style='margin-bottom:10px;'>&check; Identidad verificada con firma digital del .p12.</div>" if verified else ""
+    verified_html = (
+        "<p style='font-size:12px;color:var(--ok);font-weight:600;margin-bottom:10px;'>Sesion actual verificada con private_key.pem y certificate.pem.</p>"
+        if verified
+        else ""
+    )
 
     # --- Certificate section (only for crypto roles) ---
     cert_section = ""
     if role_requires_crypto(actor):
-        if actor.certificate_serial:
-            expires_text = (
-                escape(actor.certificate_not_after.isoformat(sep=" ", timespec="minutes"))
-                if actor.certificate_not_after
-                else "n/a"
-            )
-            cert_section = f"""
-            <div style="margin-top:16px;padding:16px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
-                <div>
-                  <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;">Certificado X.509</p>
-                  <p style="font-size:12px;color:var(--muted);">Serial: <code>{escape(actor.certificate_serial)}</code></p>
-                  <p style="font-size:12px;color:var(--muted);margin-top:3px;">Vence: {expires_text}</p>
-                </div>
-                <span class="status status-active" style="white-space:nowrap;">Activo</span>
-              </div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <a href="/ui/users/{actor.id}/certificate/view?as_user={actor.id}"
-                   style="display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border-strong);color:var(--text);padding:7px 14px;border-radius:8px;font-size:13px;font-weight:500;text-decoration:none;">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                  Ver detalles
-                </a>
-                <a href="/ui/users/{actor.id}/certificate.pem?as_user={actor.id}"
-                   style="display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border-strong);color:var(--text);padding:7px 14px;border-radius:8px;font-size:13px;font-weight:500;text-decoration:none;">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  Descargar .pem
-                </a>
-                <a href="/ui/users/{actor.id}/certificate.p12?as_user={actor.id}"
-                   style="display:inline-flex;align-items:center;gap:6px;background:var(--accent);color:#fff;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  Descargar .p12
-                </a>
-              </div>
-            </div>
-            """
-        else:
-            cert_section = """
-            <div style="margin-top:16px;padding:14px 16px;background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:10px;display:flex;align-items:center;gap:10px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#92400e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              <p style="font-size:13px;color:#92400e;">Tu perfil requiere un certificado .p12 que a&uacute;n no ha sido emitido. Contacta al administrador para solicitarlo.</p>
-            </div>
-            """
+        badge_class = "status-active" if actor.certificate_serial else "status-pending"
+        badge_text = "emitido" if actor.certificate_serial else "pendiente"
+        cert_section = f"""
+        <div style="margin-top:18px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
+            <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">Flujo criptogr&aacute;fico</p>
+            <span class="status {badge_class}">{badge_text}</span>
+          </div>
+          {_render_crypto_flow(actor, actor.id, issuer_name=issuer_name, verified=verified)}
+        </div>
+        """
+    else:
+        cert_section = "<p class='muted' style='margin-top:16px;'>Acceso con usuario y contrasena.</p>"
 
     # --- Demo content section (realistic sample data per role) ---
     bens = beneficiarios or []
@@ -1259,6 +1361,9 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
     can_activate_mirror = any(
         item["resource"] == "admin_recovery" and item["action"] == "activate" for item in permissions
     )
+    user_name_lookup = {user.id: user.full_name for user in users}
+    if backup_admin:
+        user_name_lookup[backup_admin.id] = backup_admin.full_name
 
     user_rows = []
     for user in users:
@@ -1270,12 +1375,12 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
                 secret_field = f"""
                 <div>
                   <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">
-                    Clave para el nuevo .p12
+                    Clave del nuevo material criptografico
                   </label>
-                  <input type="password" name="new_secret" placeholder="Escribe una contrase&ntilde;a para proteger el archivo .p12"
+                  <input type="password" name="new_secret" placeholder="Escribe una contrase&ntilde;a para proteger private_key.pem y el respaldo .p12"
                     style="width:100%;" {'required' if needs_new_secret else ''}>
                   <p style="font-size:11px;color:var(--muted);margin-top:4px;">
-                    Se generar&aacute; un nuevo certificado X.509 y un paquete .p12 protegido con esta clave. Ent&eacute;gasela al usuario para que pueda iniciar sesi&oacute;n.
+                    Se generar&aacute;n private_key.pem, public_key.pem y certificate.pem para el acceso. El <code>.p12</code> se conserva como respaldo.
                   </p>
                 </div>
                 """
@@ -1342,7 +1447,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
               <select name="role_id">
                 {''.join(f"<option value='{role.id}' {'selected' if role.id == user.role_id else ''}>{escape(role.name)}</option>" for role in roles)}
               </select>
-              <input type="password" name="new_secret" placeholder="Clave .p12 si cambias a rol criptografico">
+              <input type="password" name="new_secret" placeholder="Clave del material criptografico si cambias a rol criptografico">
               <button type="submit">Guardar rol</button>
             </form>
             """
@@ -1350,7 +1455,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
         account_note = "Acceso vigente"
         if user.status == "revoked":
             account_note = (
-                "La revocacion bloquea de inmediato el acceso. En roles criptograficos se recomienda reemitir un nuevo .p12 al reactivar."
+                "La revocacion bloquea de inmediato el acceso. En roles criptograficos se recomienda reemitir private_key.pem y certificate.pem al reactivar."
                 if user_uses_crypto
                 else "La revocacion borra la contrasena almacenada y obliga a definir una nueva para reactivar."
             )
@@ -1361,35 +1466,27 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
 
         certificate_section = "<p class='muted'>Acceso solo con usuario y contrasena.</p>"
         if user_uses_crypto:
-            if user.certificate_serial and (user.p12_base64 or user.p12_path):
-                expires_text = (
-                    escape(user.certificate_not_after.isoformat(sep=' ', timespec='minutes'))
-                    if user.certificate_not_after
-                    else "n/a"
-                )
-                certificate_section = f"""
-                <div class="stack">
-                  <p class="muted">Login con `.p12` activo para este usuario.</p>
-                  <p>Serial: <code>{escape(user.certificate_serial)}</code></p>
-                  <p>Vence: {expires_text}</p>
-                  <div class="mini-links">
-                    <a href="/ui/users/{user.id}/certificate/view?as_user={actor.id}">Ver</a>
-                    <a href="/ui/users/{user.id}/certificate.pem?as_user={actor.id}">PEM</a>
-                    <a href="/ui/users/{user.id}/certificate.p12?as_user={actor.id}">.p12</a>
-                  </div>
-                </div>
+            missing_explicit_artifacts = not user.certificate_pem or not CertificateService.get_user_public_key_pem(user)
+            certificate_section = _render_crypto_flow(
+                user,
+                actor.id,
+                issuer_name=user_name_lookup.get(user.certificate_issuer_user_id),
+            )
+            if not user.certificate_serial or missing_explicit_artifacts:
+                action_label = "Emitir artefactos" if not user.certificate_serial else "Reemitir artefactos"
+                certificate_section += f"""
+                <form method="post" action="/ui/users/{user.id}/certificate" class="inline-form" style="margin-top:10px;">
+                  <input type="password" name="credential_secret" placeholder="Contrasena de private_key.pem y del respaldo .p12" required>
+                  <button type="submit">{action_label}</button>
+                </form>
                 """
             else:
-                certificate_section = f"""
-                <form method="post" action="/ui/users/{user.id}/certificate" class="inline-form">
-
-                  <input type="password" name="credential_secret" placeholder="Contrasena .p12" required>
-                  <button type="submit">Emitir certificado</button>
-                </form>
+                certificate_section += """
+                <p class="muted" style="margin-top:8px;">Artefactos listos para entrega y autenticacion.</p>
                 """
 
         summary_expiration = expiration_text
-        row_hint = "Admin/coordinador con .p12" if user_uses_crypto else "Password local"
+        row_hint = "private.pem + cert.pem" if user_uses_crypto else "usuario + contrasena"
 
         user_rows.append(
             f"""
@@ -1421,7 +1518,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
                   {role_form}
                 </section>
                 <section class="control-panel">
-                  <h4>Credencial</h4>
+                  <h4>{'Flujo criptografico' if user_uses_crypto else 'Credencial'}</h4>
                   {certificate_section}
                 </section>
               </div>
@@ -1446,7 +1543,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
             </div>
             <label>
               Contrase&ntilde;a inicial
-              <span class="muted" style="font-weight:400;font-size:12px;margin-top:-2px;">O clave .p12 para roles criptogr&aacute;ficos</span>
+              <span class="muted" style="font-weight:400;font-size:12px;margin-top:-2px;">Clave del material criptogr&aacute;fico para roles criptogr&aacute;ficos</span>
               <input name="credential_secret" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" required>
             </label>
             <div><button type="submit" style="margin-top:4px;">Crear usuario</button></div>
@@ -1476,10 +1573,9 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
     certificate_rows = "".join(
         f"""
         <li>
-          <strong>{escape(user.full_name)}</strong> · {escape(user.role.name)} ·
-          <a href="/ui/users/{user.id}/certificate/view?as_user={actor.id}">Ver</a> ·
-          <a href="/ui/users/{user.id}/certificate.pem?as_user={actor.id}">PEM</a> ·
-          <a href="/ui/users/{user.id}/certificate.p12?as_user={actor.id}">.p12</a>
+          <strong>{escape(user.full_name)}</strong> · {escape(user.role.name)} · {escape('Autofirmado' if user.role.code == 'ADMIN' else user_name_lookup.get(user.certificate_issuer_user_id, 'Administrador firmante'))} ·
+          <a href="/ui/users/{user.id}/certificate/view?as_user={actor.id}">ver certificado</a> ·
+          {_crypto_file_state(user, actor.id)}
         </li>
         """
         for user in certificate_history
@@ -1593,6 +1689,17 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
           .panel-body {{ padding: 0 20px 20px; display: flex; flex-direction: column; gap: 10px; }}
           .muted {{ color: var(--muted); font-size: 13px; }}
           .mini-links {{ display: flex; flex-wrap: wrap; gap: 10px; }}
+          .crypto-flow {{ display: flex; flex-direction: column; border-top: 1px solid var(--border); }}
+          .crypto-row {{ display: grid; grid-template-columns: 126px 1fr; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }}
+          .crypto-step-name {{ font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }}
+          .crypto-step-body {{ display: flex; flex-direction: column; gap: 4px; min-width: 0; }}
+          .crypto-step-main {{ font-size: 13px; color: var(--text); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }}
+          .crypto-step-meta {{ font-size: 12px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }}
+          .crypto-pill {{ display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid; }}
+          .crypto-pill-ok {{ background: var(--ok-bg); color: var(--ok); border-color: var(--ok-border); }}
+          .crypto-missing {{ color: var(--muted); font-size: 12px; }}
+          .crypto-once {{ color: var(--warn); font-size: 11px; font-weight: 600; }}
+          .crypto-delivered {{ color: var(--muted); font-size: 12px; }}
           ul {{ margin: 0; padding-left: 18px; }}
           li {{ margin-bottom: 4px; }}
           code {{ background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-family: 'Courier New', monospace; font-size: 12px; word-break: break-all; }}
@@ -1607,6 +1714,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
           }}
           @media (max-width: 560px) {{
             .user-row-body {{ grid-template-columns: 1fr; }}
+            .crypto-row {{ grid-template-columns: 1fr; gap: 6px; }}
           }}
         </style>
       </head>
@@ -1704,7 +1812,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
           <details class="collapsible-panel">
             <summary><h2>Certificados firmados e hist&oacute;rico</h2><span class="summary-button">Abrir</span></summary>
             <div class="panel-body" style="padding:14px 20px 20px;">
-              <p class="muted">ADMIN y COORDINADOR autentican con .p12. Aqu&iacute; puedes consultar el certificado autofirmado del administrador firmante y el hist&oacute;rico emitido.</p>
+              <p class="muted">ADMIN -> firma coordinadores · COORDINADOR -> entra con <code>private_key.pem</code> + <code>certificate.pem</code>.</p>
               <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;">
                 <a href="/ui/ca/certificate/view?as_user={actor.id}">Ver certificado del admin firmante</a>
                 <a href="/ui/ca/certificate?as_user={actor.id}">Descargar certificado del admin firmante (.pem)</a>
@@ -1860,10 +1968,14 @@ def self_register(
 async def login(
     identifier: str = Form(...),
     password: str = Form(...),
-    p12_file: UploadFile | None = File(default=None),
+    private_key_file: UploadFile | None = File(default=None),
+    certificate_file: UploadFile | None = File(default=None),
     db: Session = Depends(get_db),
 ):
-    if identifier.strip().lower() == "admin" and password == "admin" and (p12_file is None or not p12_file.filename):
+    has_private_key = private_key_file is not None and bool(private_key_file.filename)
+    has_certificate = certificate_file is not None and bool(certificate_file.filename)
+
+    if identifier.strip().lower() == "admin" and password == "admin" and not has_private_key and not has_certificate:
         admin = get_actor_or_404(db, None)
         if not is_active_admin(admin):
             return HTMLResponse(render_login_page("El administrador demo no esta activo"), status_code=403)
@@ -1882,15 +1994,22 @@ async def login(
         return _login_redirect(resp, admin.id)
 
     try:
-        p12_bytes = b""
-        if p12_file is not None and p12_file.filename:
-            p12_bytes = await p12_file.read()
+        private_key_bytes = b""
+        certificate_bytes = b""
+        if has_private_key:
+            private_key_bytes = await private_key_file.read()
+        if has_certificate:
+            certificate_bytes = await certificate_file.read()
 
-        if p12_bytes:
-            user, proof = SignatureLoginService.authenticate_with_p12(
+        if has_private_key != has_certificate:
+            raise ValueError("Debes adjuntar private_key.pem y certificate.pem juntos")
+
+        if private_key_bytes and certificate_bytes:
+            user, proof = SignatureLoginService.authenticate_with_private_key_and_certificate(
                 db,
                 identifier=identifier,
-                p12_bytes=p12_bytes,
+                private_key_bytes=private_key_bytes,
+                certificate_bytes=certificate_bytes,
                 password=password,
             )
             AuditService.log(
@@ -1898,7 +2017,7 @@ async def login(
                 event_type="login_signature_verified",
                 actor_user_id=user.id,
                 target_user_id=user.id,
-                action="login_with_p12",
+                action="login_with_private_key",
                 resource="auth",
                 result="success",
                 metadata=proof,
@@ -1914,7 +2033,7 @@ async def login(
         AuditService.log(
             db,
             event_type="login_rejected",
-            action="login_with_p12" if p12_file is not None and p12_file.filename else "login_with_password",
+            action="login_with_private_key" if has_private_key or has_certificate else "login_with_password",
             resource="auth",
             result="failure",
             metadata={"identifier": identifier.strip().lower(), "reason": str(exc)},
@@ -1946,7 +2065,18 @@ def user_portal(
     permissions = AuthorizationService.get_permissions(db, actor)
     logs = AuditService.list_recent(db)
     beneficiarios = BeneficiarioService.list_all(db)
-    return HTMLResponse(render_portal_page(actor, permissions, logs, notice=notice, verified=verified, beneficiarios=beneficiarios))
+    issuer_user = UserService.get_user(db, actor.certificate_issuer_user_id) if actor.certificate_issuer_user_id else None
+    return HTMLResponse(
+        render_portal_page(
+            actor,
+            permissions,
+            logs,
+            notice=notice,
+            verified=verified,
+            beneficiarios=beneficiarios,
+            issuer_name=issuer_user.full_name if issuer_user else None,
+        )
+    )
 
 
 @app.post("/ui/beneficiarios", response_class=HTMLResponse)
@@ -2351,6 +2481,56 @@ def download_certificate_pem(user_id: int, db: Session = Depends(get_db), actor=
         content=user.certificate_pem,
         media_type="application/x-pem-file",
         headers={"Content-Disposition": f'attachment; filename="{user.email.replace("@", "_")}.crt.pem"'},
+    )
+
+
+@app.get("/ui/users/{user_id}/public-key.pem")
+def download_public_key_pem(user_id: int, db: Session = Depends(get_db), actor=Depends(_get_session_actor)):
+    _require_own_or_admin(actor, user_id)
+    require_actor_permission(db, actor, "certificates", "view")
+    user = UserService.get_user(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    public_key_pem = CertificateService.get_user_public_key_pem(user)
+    if not public_key_pem:
+        raise HTTPException(status_code=404, detail="Public key not found")
+
+    return Response(
+        content=public_key_pem,
+        media_type="application/x-pem-file",
+        headers={"Content-Disposition": f'attachment; filename="{user.email.replace("@", "_")}.public.pem"'},
+    )
+
+
+@app.get("/ui/users/{user_id}/private-key.pem")
+def download_private_key_pem(user_id: int, db: Session = Depends(get_db), actor=Depends(_get_session_actor)):
+    _require_own_or_admin(actor, user_id)
+    require_actor_permission(db, actor, "certificates", "view")
+    user = UserService.get_user(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    try:
+        private_key_pem = CertificateService.deliver_user_private_key(db, user)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    AuditService.log(
+        db,
+        event_type="private_key_delivered",
+        actor_user_id=actor.id,
+        target_user_id=user.id,
+        action="deliver_private_key",
+        resource="certificates",
+        result="success",
+        metadata={"delivery_mode": "one_time_download"},
+    )
+
+    return Response(
+        content=private_key_pem,
+        media_type="application/x-pem-file",
+        headers={"Content-Disposition": f'attachment; filename="{user.email.replace("@", "_")}.private.pem"'},
     )
 
 

@@ -264,18 +264,24 @@ class SchemaService:
         if "users" not in inspector.get_table_names():
             return
 
+        dialect = engine.dialect.name
+        datetime_type = "TIMESTAMP" if dialect == "postgresql" else "DATETIME"
+        boolean_false_default = "BOOLEAN NOT NULL DEFAULT FALSE" if dialect == "postgresql" else "BOOLEAN NOT NULL DEFAULT 0"
         current_columns = {column["name"] for column in inspector.get_columns("users")}
         extra_columns = {
             "certificate_serial": "VARCHAR(128)",
             "certificate_pem": "TEXT",
-            "certificate_not_before": "DATETIME",
-            "certificate_not_after": "DATETIME",
+            "public_key_pem": "TEXT",
+            "private_key_pem_encrypted": "TEXT",
+            "private_key_delivered_at": datetime_type,
+            "certificate_not_before": datetime_type,
+            "certificate_not_after": datetime_type,
             "p12_path": "VARCHAR(255)",
             "p12_base64": "TEXT",
             "certificate_issuer_pem": "TEXT",
             "certificate_issuer_user_id": "INTEGER",
             "password_hash": "VARCHAR(255)",
-            "is_backup_admin": "BOOLEAN NOT NULL DEFAULT 0",
+            "is_backup_admin": boolean_false_default,
             "mirror_source_user_id": "INTEGER",
         }
 
@@ -487,7 +493,7 @@ class CertificateService:
         if not role_requires_crypto(user):
             raise ValueError("Este usuario no requiere certificado criptografico")
         if not password.strip():
-            raise ValueError("Debes indicar una contrasena para el archivo .p12")
+            raise ValueError("Debes indicar una contrasena para el material criptografico")
         if (user.p12_base64 or user.p12_path) and not reissue and user.certificate_serial:
             return user
 
@@ -591,8 +597,20 @@ class CertificateService:
         )
 
         certificate_pem = certificate.public_bytes(serialization.Encoding.PEM).decode()
+        public_key_pem = private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        ).decode()
+        private_key_pem_encrypted = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.BestAvailableEncryption(password.encode()),
+        ).decode()
         user.certificate_serial = format(certificate.serial_number, "x")
         user.certificate_pem = certificate_pem
+        user.public_key_pem = public_key_pem
+        user.private_key_pem_encrypted = private_key_pem_encrypted
+        user.private_key_delivered_at = None
         user.certificate_issuer_pem = (
             issuer_certificate.public_bytes(serialization.Encoding.PEM).decode()
             if issuer_certificate is not None
@@ -656,6 +674,85 @@ class CertificateService:
         certificate = x509.load_pem_x509_certificate(user.certificate_pem.encode())
         return _certificate_summary(certificate, user.certificate_pem)
 
+    @staticmethod
+    def get_user_public_key_pem(user: User) -> str | None:
+        if user.public_key_pem:
+            return user.public_key_pem
+        if not user.certificate_pem:
+            return None
+        certificate = x509.load_pem_x509_certificate(user.certificate_pem.encode())
+        public_key = certificate.public_key()
+        if not isinstance(public_key, rsa.RSAPublicKey):
+            return None
+        return public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        ).decode()
+
+    @staticmethod
+    def get_user_private_key_pem(user: User) -> str | None:
+        return user.private_key_pem_encrypted
+
+    @staticmethod
+    def private_key_download_available(user: User) -> bool:
+        return bool(user.private_key_pem_encrypted and user.private_key_delivered_at is None)
+
+    @staticmethod
+    def deliver_user_private_key(db: Session, user: User) -> str:
+        if not CertificateService.private_key_download_available(user):
+            raise ValueError("La llave privada ya fue entregada. Debes reemitir la credencial para generar una nueva.")
+
+        private_key_pem = user.private_key_pem_encrypted
+        if not private_key_pem:
+            raise ValueError("La llave privada no esta disponible para descarga")
+
+        user.private_key_delivered_at = datetime.utcnow()
+        user.private_key_pem_encrypted = None
+        user.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(user)
+        return private_key_pem
+
+    @staticmethod
+    def describe_crypto_material(user: User, issuer_name: str | None = None) -> dict | None:
+        if not role_requires_crypto(user):
+            return None
+
+        signature_algorithm = "N/D"
+        key_algorithm = "RSA 2048"
+        if user.certificate_pem:
+            certificate = x509.load_pem_x509_certificate(user.certificate_pem.encode())
+            signature_algorithm = certificate.signature_algorithm_oid._name or "sha256WithRSAEncryption"
+            public_key = certificate.public_key()
+            if isinstance(public_key, rsa.RSAPublicKey):
+                key_algorithm = f"RSA {public_key.key_size}"
+
+        if user.role and user.role.code == "ADMIN":
+            signed_by = "Autofirmado"
+            signed_with = "private_key.pem propia"
+            signer_verified_with = "public_key.pem propia"
+        else:
+            signed_by = issuer_name or "Administrador firmante"
+            signed_with = "private_key.pem del administrador firmante"
+            signer_verified_with = f"public_key.pem de {issuer_name or 'administrador firmante'}"
+
+        return {
+            "has_certificate": bool(user.certificate_pem),
+            "has_public_key": bool(CertificateService.get_user_public_key_pem(user)),
+            "has_private_key": CertificateService.private_key_download_available(user),
+            "has_p12": bool(user.p12_base64 or user.p12_path),
+            "private_key_delivered": bool(user.private_key_delivered_at),
+            "serial": user.certificate_serial,
+            "key_algorithm": key_algorithm,
+            "certificate_signature_algorithm": signature_algorithm,
+            "signed_by": signed_by,
+            "signed_with": signed_with,
+            "signer_verified_with": signer_verified_with,
+            "login_artifact": "private_key.pem + certificate.pem + contrasena",
+            "challenge_signed_with": "private_key.pem del usuario",
+            "challenge_verified_with": "public_key.pem del certificado del usuario",
+        }
+
 
 class SignatureLoginService:
     @staticmethod
@@ -684,6 +781,95 @@ class SignatureLoginService:
         )
 
     @staticmethod
+    def _validate_certificate_for_user(db: Session, user: User, certificate: x509.Certificate) -> tuple[datetime, str]:
+        if format(certificate.serial_number, "x") != user.certificate_serial:
+            raise ValueError("El certificado no corresponde al usuario registrado")
+        if not SignatureLoginService._certificate_has_user_email(certificate, user.email):
+            raise ValueError("El correo del certificado no coincide con el usuario")
+
+        now = datetime.now(UTC)
+        if certificate.not_valid_before_utc > now or certificate.not_valid_after_utc < now:
+            raise ValueError("El certificado esta fuera de vigencia")
+        if user.end_date:
+            if certificate.not_valid_after_utc.replace(tzinfo=None) != user.end_date.replace(microsecond=0):
+                raise ValueError("El certificado no coincide con la vigencia actual del usuario")
+
+        if user.role.code == "ADMIN":
+            if certificate.subject != certificate.issuer:
+                raise ValueError("El certificado del administrador debe ser autofirmado")
+            try:
+                CertificateService._verify_self_signed_certificate(certificate)
+            except InvalidSignature as exc:
+                raise ValueError("La autofirma del certificado del administrador no es valida") from exc
+            issuer_label = "Autofirmado"
+        else:
+            if certificate.subject == certificate.issuer:
+                raise ValueError("Los certificados de coordinador no deben ser autofirmados")
+            if user.certificate_issuer_pem:
+                issuer_certificate = x509.load_pem_x509_certificate(user.certificate_issuer_pem.encode())
+                try:
+                    CertificateService._verify_self_signed_certificate(issuer_certificate)
+                except InvalidSignature as exc:
+                    raise ValueError("El certificado del administrador firmante no es valido") from exc
+                try:
+                    SignatureLoginService._verify_ca_signature(certificate, issuer_certificate)
+                except InvalidSignature as exc:
+                    raise ValueError("El certificado no fue firmado por el administrador registrado") from exc
+                issuer_label = _name_to_text(issuer_certificate.subject)
+            else:
+                _ca_key, ca_certificate = CertificateAuthorityService.ensure_ca(db)
+                try:
+                    SignatureLoginService._verify_ca_signature(certificate, ca_certificate)
+                except InvalidSignature as exc:
+                    raise ValueError("La firma del certificado no coincide con el emisor esperado") from exc
+                issuer_label = _name_to_text(ca_certificate.subject)
+
+        return now, issuer_label
+
+    @staticmethod
+    def _build_login_proof(
+        user: User,
+        private_key: rsa.RSAPrivateKey,
+        certificate: x509.Certificate,
+        now: datetime,
+        *,
+        login_artifact: str,
+        issuer_label: str,
+    ) -> dict:
+        challenge = f"login:{user.id}:{user.email}:{now.isoformat()}".encode()
+        signature = private_key.sign(
+            challenge,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH,
+            ),
+            hashes.SHA256(),
+        )
+
+        try:
+            certificate.public_key().verify(
+                signature,
+                challenge,
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=padding.PSS.MAX_LENGTH,
+                ),
+                hashes.SHA256(),
+            )
+        except InvalidSignature as exc:
+            raise ValueError("La llave privada no corresponde al certificate.pem entregado") from exc
+
+        return {
+            "challenge": challenge.decode(),
+            "signature_preview": signature.hex()[:48],
+            "signature_algorithm": "RSA-PSS-SHA256",
+            "certificate_signature_algorithm": certificate.signature_algorithm_oid._name,
+            "login_artifact": login_artifact,
+            "challenge_verified_with": "certificate public key",
+            "issuer": issuer_label,
+        }
+
+    @staticmethod
     def authenticate_with_p12(db: Session, *, identifier: str, p12_bytes: bytes, password: str) -> tuple[User, dict]:
         user = PasswordLoginService.find_user_by_identifier(db, identifier)
         if not user:
@@ -710,71 +896,63 @@ class SignatureLoginService:
         if not isinstance(certificate.public_key(), rsa.RSAPublicKey):
             raise ValueError("El certificado no contiene una llave publica RSA")
 
-        if format(certificate.serial_number, "x") != user.certificate_serial:
-            raise ValueError("El certificado no corresponde al usuario registrado")
-        if not SignatureLoginService._certificate_has_user_email(certificate, user.email):
-            raise ValueError("El correo del certificado no coincide con el usuario")
-
-        now = datetime.now(UTC)
-        if certificate.not_valid_before_utc > now or certificate.not_valid_after_utc < now:
-            raise ValueError("El certificado esta fuera de vigencia")
-        if user.end_date:
-            if certificate.not_valid_after_utc.replace(tzinfo=None) != user.end_date.replace(microsecond=0):
-                raise ValueError("El certificado no coincide con la vigencia actual del usuario")
-
-        if user.role.code == "ADMIN":
-            if certificate.subject != certificate.issuer:
-                raise ValueError("El certificado del administrador debe ser autofirmado")
-            try:
-                CertificateService._verify_self_signed_certificate(certificate)
-            except InvalidSignature as exc:
-                raise ValueError("La autofirma del certificado del administrador no es valida") from exc
-        else:
-            if certificate.subject == certificate.issuer:
-                raise ValueError("Los certificados de coordinador no deben ser autofirmados")
-            if user.certificate_issuer_pem:
-                issuer_certificate = x509.load_pem_x509_certificate(user.certificate_issuer_pem.encode())
-                try:
-                    CertificateService._verify_self_signed_certificate(issuer_certificate)
-                except InvalidSignature as exc:
-                    raise ValueError("El certificado del administrador firmante no es valido") from exc
-                try:
-                    SignatureLoginService._verify_ca_signature(certificate, issuer_certificate)
-                except InvalidSignature as exc:
-                    raise ValueError("El certificado no fue firmado por el administrador registrado") from exc
-            else:
-                _ca_key, ca_certificate = CertificateAuthorityService.ensure_ca(db)
-                try:
-                    SignatureLoginService._verify_ca_signature(certificate, ca_certificate)
-                except InvalidSignature as exc:
-                    raise ValueError("La firma del certificado no coincide con el emisor esperado") from exc
-
-        challenge = f"login:{user.id}:{user.email}:{now.isoformat()}".encode()
-        signature = private_key.sign(
-            challenge,
-            padding.PSS(
-                mgf=padding.MGF1(hashes.SHA256()),
-                salt_length=padding.PSS.MAX_LENGTH,
-            ),
-            hashes.SHA256(),
+        now, issuer_label = SignatureLoginService._validate_certificate_for_user(db, user, certificate)
+        proof = SignatureLoginService._build_login_proof(
+            user,
+            private_key,
+            certificate,
+            now,
+            login_artifact="certificate.p12 (compatibilidad)",
+            issuer_label=issuer_label,
         )
+        return user, proof
 
-        certificate.public_key().verify(
-            signature,
-            challenge,
-            padding.PSS(
-                mgf=padding.MGF1(hashes.SHA256()),
-                salt_length=padding.PSS.MAX_LENGTH,
-            ),
-            hashes.SHA256(),
+    @staticmethod
+    def authenticate_with_private_key_and_certificate(
+        db: Session,
+        *,
+        identifier: str,
+        private_key_bytes: bytes,
+        certificate_bytes: bytes,
+        password: str,
+    ) -> tuple[User, dict]:
+        user = PasswordLoginService.find_user_by_identifier(db, identifier)
+        if not user:
+            raise ValueError("Usuario no registrado")
+        if user.status != "active":
+            raise ValueError(f"La cuenta no esta activa: {user.status}")
+        if not role_requires_crypto(user):
+            raise ValueError("Este usuario entra con correo y contrasena")
+        if not user.certificate_serial:
+            raise ValueError("El usuario no tiene certificado emitido")
+
+        try:
+            certificate = x509.load_pem_x509_certificate(certificate_bytes)
+        except Exception as exc:
+            raise ValueError("No se pudo leer certificate.pem") from exc
+
+        try:
+            private_key = serialization.load_pem_private_key(
+                private_key_bytes,
+                password=password.encode() if password else None,
+            )
+        except Exception as exc:
+            raise ValueError("No se pudo abrir private_key.pem con esa contrasena") from exc
+
+        if not isinstance(private_key, rsa.RSAPrivateKey):
+            raise ValueError("private_key.pem no contiene una llave privada RSA")
+        if not isinstance(certificate.public_key(), rsa.RSAPublicKey):
+            raise ValueError("certificate.pem no contiene una llave publica RSA")
+
+        now, issuer_label = SignatureLoginService._validate_certificate_for_user(db, user, certificate)
+        proof = SignatureLoginService._build_login_proof(
+            user,
+            private_key,
+            certificate,
+            now,
+            login_artifact="private_key.pem + certificate.pem",
+            issuer_label=issuer_label,
         )
-
-        proof = {
-            "challenge": challenge.decode(),
-            "signature_preview": signature.hex()[:48],
-            "signature_algorithm": "RSA-PSS-SHA256",
-            "certificate_signature_algorithm": certificate.signature_algorithm_oid._name,
-        }
         return user, proof
 
 
@@ -978,7 +1156,7 @@ class PasswordLoginService:
         if user.status != "active":
             raise ValueError(f"La cuenta no esta activa: {user.status}")
         if role_requires_crypto(user):
-            raise ValueError("Este usuario requiere autenticacion con certificado .p12")
+            raise ValueError("Este usuario requiere autenticacion con private_key.pem y certificate.pem")
         if not PasswordService.verify_password(password, user.password_hash):
             raise ValueError("Contrasena incorrecta")
         return user
@@ -1115,7 +1293,12 @@ class BootstrapService:
             can_auto_manage = BootstrapService._can_manage_demo_certificate(user)
             needs_issue = not user.certificate_serial
             needs_policy_refresh = can_auto_manage and user.certificate_serial and not CertificateService.uses_current_signing_policy(user)
-            if not needs_issue and not needs_policy_refresh:
+            needs_artifact_refresh = (
+                can_auto_manage
+                and user.certificate_serial
+                and not user.public_key_pem
+            )
+            if not needs_issue and not needs_policy_refresh and not needs_artifact_refresh:
                 continue
             if user.end_date is not None and user.end_date <= datetime.utcnow():
                 if user.status != "expired":
@@ -1135,7 +1318,7 @@ class BootstrapService:
                     db,
                     user,
                     _demo_secret_for_user(user),
-                    reissue=needs_policy_refresh,
+                    reissue=needs_policy_refresh or needs_artifact_refresh,
                 )
         db.commit()
 
@@ -1327,7 +1510,7 @@ class UserService:
                 needs_reissue = user.status == "revoked" or not user.certificate_serial
                 if needs_reissue:
                     if not new_secret.strip():
-                        raise ValueError("Debes definir una nueva contrasena para el .p12")
+                        raise ValueError("Debes definir una nueva contrasena para el material criptografico")
                     user.password_hash = PasswordService.hash_password(new_secret)
                 elif new_secret.strip():
                     user.password_hash = PasswordService.hash_password(new_secret)
@@ -1397,7 +1580,7 @@ class UserService:
         db.refresh(user)
         if role.code in CRYPTO_ROLE_CODES and not old_role_was_crypto:
             if not new_secret.strip():
-                raise ValueError("Debes indicar la contrasena inicial del .p12 para este rol")
+                raise ValueError("Debes indicar la contrasena inicial del material criptografico para este rol")
             user.password_hash = PasswordService.hash_password(new_secret)
             db.commit()
             db.refresh(user)
