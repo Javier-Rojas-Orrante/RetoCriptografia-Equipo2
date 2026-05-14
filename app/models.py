@@ -55,8 +55,6 @@ class User(Base):
     private_key_delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     certificate_not_before: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     certificate_not_after: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    p12_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    p12_base64: Mapped[str | None] = mapped_column(Text, nullable=True)
     certificate_issuer_pem: Mapped[str | None] = mapped_column(Text, nullable=True)
     certificate_issuer_user_id: Mapped[int | None] = mapped_column(nullable=True)
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)

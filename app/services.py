@@ -10,7 +10,6 @@ from cryptography import x509
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
-from cryptography.hazmat.primitives.serialization import pkcs12
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session, joinedload
@@ -367,8 +366,6 @@ class SchemaService:
             "private_key_delivered_at": datetime_type,
             "certificate_not_before": datetime_type,
             "certificate_not_after": datetime_type,
-            "p12_path": "VARCHAR(255)",
-            "p12_base64": "TEXT",
             "certificate_issuer_pem": "TEXT",
             "certificate_issuer_user_id": "INTEGER",
             "password_hash": "VARCHAR(255)",
@@ -602,7 +599,7 @@ class CertificateService:
             raise ValueError("Este usuario no requiere certificado criptografico")
         if not password.strip():
             raise ValueError("Debes indicar una contrasena para el material criptografico")
-        if (user.p12_base64 or user.p12_path) and not reissue and user.certificate_serial:
+        if user.certificate_serial and not reissue:
             return user
 
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -696,14 +693,6 @@ class CertificateService:
             issuer_user_id = signer_admin.id
             issuer_certificate = signer_certificate
 
-        p12_bytes = pkcs12.serialize_key_and_certificates(
-            name=user.email.encode(),
-            key=private_key,
-            cert=certificate,
-            cas=[issuer_certificate] if issuer_certificate is not None else None,
-            encryption_algorithm=serialization.BestAvailableEncryption(password.encode()),
-        )
-
         certificate_pem = certificate.public_bytes(serialization.Encoding.PEM).decode()
         public_key_pem = private_key.public_key().public_bytes(
             encoding=serialization.Encoding.PEM,
@@ -727,8 +716,6 @@ class CertificateService:
         user.certificate_issuer_user_id = issuer_user_id
         user.certificate_not_before = certificate.not_valid_before_utc.replace(tzinfo=None)
         user.certificate_not_after = certificate.not_valid_after_utc.replace(tzinfo=None)
-        user.p12_base64 = base64.b64encode(p12_bytes).decode()
-        user.p12_path = None
         user.updated_at = datetime.utcnow()
         db.commit()
         db.refresh(user)
@@ -737,43 +724,6 @@ class CertificateService:
             AdminSignerService.store_private_key(db, user.id, private_key)
 
         return user
-
-    @staticmethod
-    def get_user_p12_bytes(db: Session, user: User) -> bytes | None:
-        if user.p12_base64:
-            return base64.b64decode(user.p12_base64.encode())
-        if user.p12_path:
-            p12_path = Path(user.p12_path)
-            if p12_path.exists():
-                p12_bytes = p12_path.read_bytes()
-                user.p12_base64 = base64.b64encode(p12_bytes).decode()
-                user.p12_path = None
-                user.updated_at = datetime.utcnow()
-                db.commit()
-                db.refresh(user)
-                return p12_bytes
-        return None
-
-    @staticmethod
-    def migrate_existing_crypto_material(db: Session) -> int:
-        migrated = 0
-        CertificateAuthorityService.ensure_ca(db)
-        users = list(db.scalars(select(User).options(joinedload(User.role))).all())
-        for user in users:
-            if user.p12_base64:
-                continue
-            if not user.p12_path:
-                continue
-            p12_path = Path(user.p12_path)
-            if not p12_path.exists():
-                continue
-            user.p12_base64 = base64.b64encode(p12_path.read_bytes()).decode()
-            user.p12_path = None
-            user.updated_at = datetime.utcnow()
-            migrated += 1
-        if migrated:
-            db.commit()
-        return migrated
 
     @staticmethod
     def describe_user_certificate(user: User) -> dict | None:
@@ -848,7 +798,6 @@ class CertificateService:
             "has_certificate": bool(user.certificate_pem),
             "has_public_key": bool(CertificateService.get_user_public_key_pem(user)),
             "has_private_key": CertificateService.private_key_download_available(user),
-            "has_p12": bool(user.p12_base64 or user.p12_path),
             "private_key_delivered": bool(user.private_key_delivered_at),
             "serial": user.certificate_serial,
             "key_algorithm": key_algorithm,
@@ -976,44 +925,6 @@ class SignatureLoginService:
             "challenge_verified_with": "certificate public key",
             "issuer": issuer_label,
         }
-
-    @staticmethod
-    def authenticate_with_p12(db: Session, *, identifier: str, p12_bytes: bytes, password: str) -> tuple[User, dict]:
-        user = PasswordLoginService.find_user_by_identifier(db, identifier)
-        if not user:
-            raise ValueError("Usuario no registrado")
-        if user.status != "active":
-            raise ValueError(f"La cuenta no esta activa: {user.status}")
-        if not role_requires_crypto(user):
-            raise ValueError("Este usuario entra con correo y contrasena")
-        if not user.certificate_serial:
-            raise ValueError("El usuario no tiene certificado emitido")
-
-        try:
-            private_key, certificate, _extra = pkcs12.load_key_and_certificates(
-                p12_bytes,
-                password.encode(),
-            )
-        except Exception as exc:
-            raise ValueError("No se pudo abrir el .p12 con esa contrasena") from exc
-
-        if private_key is None or certificate is None:
-            raise ValueError("El .p12 no contiene llave privada y certificado")
-        if not isinstance(private_key, rsa.RSAPrivateKey):
-            raise ValueError("El .p12 no contiene una llave privada RSA")
-        if not isinstance(certificate.public_key(), rsa.RSAPublicKey):
-            raise ValueError("El certificado no contiene una llave publica RSA")
-
-        now, issuer_label = SignatureLoginService._validate_certificate_for_user(db, user, certificate)
-        proof = SignatureLoginService._build_login_proof(
-            user,
-            private_key,
-            certificate,
-            now,
-            login_artifact="certificate.p12 (compatibilidad)",
-            issuer_label=issuer_label,
-        )
-        return user, proof
 
     @staticmethod
     def authenticate_with_private_key_and_certificate(
@@ -1485,7 +1396,6 @@ class BootstrapService:
                 "BOOTSTRAP_ADMIN_PASSWORD o activa SEED_DEMO_DATA."
             )
 
-        CertificateService.migrate_existing_crypto_material(db)
         backup = AdminRecoveryService.sync_backup_admin(db)
         if settings.seed_demo_data:
             primary_admin = AdminRecoveryService.get_primary_admin(db)

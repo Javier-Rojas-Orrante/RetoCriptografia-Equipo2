@@ -110,6 +110,7 @@ NOTICE_MESSAGES = {
     "registro-enviado": "Solicitud de acceso enviada. Un administrador revisará tu cuenta y te notificará cuando esté activa.",
     "recovery-sent": "Solicitud enviada. Un administrador revisará tu caso y te contactará para verificar tu identidad.",
     "user-unlocked": "La cuenta fue desbloqueada correctamente.",
+    "private-key-already-delivered": "La llave privada ya fue entregada y se eliminó del servidor por seguridad. Para obtener una nueva, el administrador debe reemitir los artefactos criptográficos.",
 }
 
 
@@ -177,11 +178,15 @@ def _require_own_or_admin(actor, user_id: int) -> None:
         raise HTTPException(status_code=403, detail="No tienes permiso para acceder a este recurso")
 
 
+WARN_NOTICES = {"private-key-already-delivered"}
+
+
 def render_notice(notice: str | None) -> str:
     if not notice:
         return ""
     message = NOTICE_MESSAGES.get(notice, notice)
-    return f"<div class='ok'>{escape(message)}</div>"
+    css_class = "warn" if notice in WARN_NOTICES else "ok"
+    return f"<div class='{css_class}'>{escape(message)}</div>"
 
 
 def render_certificate_page(title: str, summary: dict, back_href: str) -> str:
@@ -357,7 +362,6 @@ def _render_crypto_flow(user, viewer_id: int, issuer_name: str | None = None, ve
           <div class="crypto-step-main">{escape(material['login_artifact'])} {verified_chip}</div>
           <div class="crypto-step-meta">
             <span>ADMIN y COORDINADOR</span>
-            {'<span>' + _crypto_file_link(f"/ui/users/{user.id}/certificate.p12?as_user={viewer_id}", 'respaldo .p12') + '</span>' if material['has_p12'] else ''}
           </div>
         </div>
       </div>
@@ -870,7 +874,7 @@ def render_admin_register_page(actor, roles, error: str | None = None) -> str:
       <div class="card" style="padding:32px;">
         <div style="margin-bottom:24px;">
           <h1 style="margin-bottom:6px;">Otorgar registro</h1>
-          <p class="muted">Crea la cuenta en estado <code>pending</code>. ADMIN y COORDINADOR reciben <code>private_key.pem</code> como entrega &uacute;nica, m&aacute;s <code>public_key.pem</code> y <code>certificate.pem</code>; <code>certificate.p12</code> queda como respaldo. OPERATIVO y VOLUNTARIO usan solo contrase&ntilde;a.</p>
+          <p class="muted">Crea la cuenta en estado <code>pending</code>. ADMIN y COORDINADOR reciben <code>private_key.pem</code> como entrega &uacute;nica, m&aacute;s <code>public_key.pem</code> y <code>certificate.pem</code>. OPERATIVO y VOLUNTARIO usan solo contrase&ntilde;a.</p>
         </div>
         {error_html}
         <form method="post" action="/admin/register" class="stack">
@@ -1429,10 +1433,10 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
                   <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">
                     Clave del nuevo material criptografico
                   </label>
-                  <input type="password" name="new_secret" placeholder="Escribe una contrase&ntilde;a para proteger private_key.pem y el respaldo .p12"
+                  <input type="password" name="new_secret" placeholder="Escribe una contrase&ntilde;a para proteger private_key.pem"
                     style="width:100%;" {'required' if needs_new_secret else ''}>
                   <p style="font-size:11px;color:var(--muted);margin-top:4px;">
-                    Se generar&aacute;n private_key.pem, public_key.pem y certificate.pem para el acceso. El <code>.p12</code> se conserva como respaldo.
+                    Se generar&aacute;n private_key.pem, public_key.pem y certificate.pem para el acceso.
                   </p>
                 </div>
                 """
@@ -1530,7 +1534,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
                 action_label = "Emitir artefactos" if not user.certificate_serial else "Reemitir artefactos"
                 certificate_section += f"""
                 <form method="post" action="/ui/users/{user.id}/certificate" class="inline-form" style="margin-top:10px;">
-                  <input type="password" name="credential_secret" placeholder="Contrasena de private_key.pem y del respaldo .p12" required>
+                  <input type="password" name="credential_secret" placeholder="Contrase&ntilde;a de private_key.pem" required>
                   <button type="submit">{action_label}</button>
                 </form>
                 """
@@ -2567,24 +2571,6 @@ def ui_activate_mirror(
     return redirect_home(backup_admin.id, "recovery-activated")
 
 
-@app.get("/ui/users/{user_id}/certificate.p12")
-def download_p12(user_id: int, db: Session = Depends(get_db), actor=Depends(_get_session_actor)):
-    _require_own_or_admin(actor, user_id)
-    require_actor_permission(db, actor, "certificates", "view")
-    user = UserService.get_user(db, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Certificate package not found")
-
-    p12_bytes = CertificateService.get_user_p12_bytes(db, user)
-    if not p12_bytes:
-        raise HTTPException(status_code=404, detail="Certificate package file not found")
-
-    return Response(
-        content=p12_bytes,
-        media_type="application/x-pkcs12",
-        headers={"Content-Disposition": f'attachment; filename="{user.email.replace("@", "_")}.p12"'},
-    )
-
 
 @app.get("/ui/users/{user_id}/certificate/view", response_class=HTMLResponse)
 def view_user_certificate(user_id: int, db: Session = Depends(get_db), actor=Depends(_get_session_actor)):
@@ -2646,8 +2632,11 @@ def download_private_key_pem(user_id: int, db: Session = Depends(get_db), actor=
 
     try:
         private_key_pem = CertificateService.deliver_user_private_key(db, user)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError:
+        back_href = "/dashboard" if is_active_admin(actor) else "/portal"
+        url = f"{back_href}?{urlencode({'notice': 'private-key-already-delivered'})}"
+        resp = RedirectResponse(url=url, status_code=303)
+        return _login_redirect(resp, actor.id)
 
     AuditService.log(
         db,
