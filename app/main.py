@@ -4,7 +4,7 @@ from html import escape
 from pathlib import Path
 from urllib.parse import urlencode
 
-from fastapi import Cookie, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import Cookie, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
@@ -23,6 +23,7 @@ from app.services import (
     BeneficiarioService,
     BootstrapService,
     CertificateService,
+    NotificationService,
     PasswordLoginService,
     SignatureLoginService,
     UserService,
@@ -107,6 +108,8 @@ NOTICE_MESSAGES = {
     "crypto-login": "Identidad verificada con el certificado criptografico del usuario.",
     "beneficiario-creado": "Beneficiario registrado correctamente. Ya está visible para el equipo operativo.",
     "registro-enviado": "Solicitud de acceso enviada. Un administrador revisará tu cuenta y te notificará cuando esté activa.",
+    "recovery-sent": "Solicitud enviada. Un administrador revisará tu caso y te contactará para verificar tu identidad.",
+    "user-unlocked": "La cuenta fue desbloqueada correctamente.",
 }
 
 
@@ -755,6 +758,22 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
               Solicitar acceso
             </a>
           </div>
+          <hr class="divider">
+          <details style="text-align:left;">
+            <summary style="justify-content:center;font-size:12px;font-weight:500;color:#6b7280;">
+              &iquest;Olvidaste tu contrase&ntilde;a o perdiste tus certificados?
+            </summary>
+            <form method="post" action="/login/recovery-request" style="display:flex;flex-direction:column;gap:10px;margin-top:14px;">
+              <p style="font-size:12px;color:#6b7280;">Env&iacute;a tu nombre y correo. Un administrador verificar&aacute; tu identidad en persona y te entregar&aacute; nuevas credenciales.</p>
+              <label style="font-size:13px;font-weight:500;">Correo registrado
+                <input name="identifier" type="email" placeholder="correo@ejemplo.com" required style="margin-top:4px;">
+              </label>
+              <label style="font-size:13px;font-weight:500;">Nombre completo
+                <input name="full_name" placeholder="Nombre Apellido" required style="margin-top:4px;">
+              </label>
+              <button type="submit" class="btn btn-ghost" style="margin-top:0;">Solicitar recuperaci&oacute;n</button>
+            </form>
+          </details>
         </div>
       </div>
     </body>
@@ -1372,7 +1391,7 @@ def _render_beneficiarios_admin(actor, bens: list) -> str:
     """
 
 
-def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certificate_history, notice: str | None = None, beneficiarios=None) -> str:
+def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certificate_history, notice: str | None = None, beneficiarios=None, notifications=None) -> str:
     permission_text = ", ".join(f"{item['resource']}:{item['action']}" for item in permissions) or "sin permisos"
     actor_options = "".join(
         f"<option value='{user.id}'>{escape(user.full_name)} ({escape(user.role.name)})</option>"
@@ -1480,13 +1499,15 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
               <select name="role_id">
                 {''.join(f"<option value='{role.id}' {'selected' if role.id == user.role_id else ''}>{escape(role.name)}</option>" for role in roles)}
               </select>
-              <input type="password" name="new_secret" placeholder="Clave del material criptografico si cambias a rol criptografico">
+              <input type="password" name="new_secret" placeholder="Clave del material criptografico si cambias a rol criptografico" required>
               <button type="submit">Guardar rol</button>
             </form>
             """
 
         account_note = "Acceso vigente"
-        if user.status == "revoked":
+        if user.login_locked_until:
+            account_note = "Cuenta bloqueada por exceso de intentos de login fallidos."
+        elif user.status == "revoked":
             account_note = (
                 "La revocacion bloquea de inmediato el acceso. En roles criptograficos se recomienda reemitir private_key.pem y certificate.pem al reactivar."
                 if user_uses_crypto
@@ -1541,6 +1562,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
                   <p class="muted">{escape(account_note)}</p>
                   {activation_form}
                   {revoke_form}
+                  {f"""<form method="post" action="/ui/users/{user.id}/unlock" class="inline-form" style="margin-top:8px;"><button type="submit" style="background:#d97706;">Desbloquear cuenta</button></form>""" if user.login_locked_until else ""}
                 </section>
                 <section class="control-panel">
                   <h4>Vigencia</h4>
@@ -1615,9 +1637,54 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
     ) or "<li>No hay certificados legacy registrados.</li>"
 
     log_items = "\n".join(
-        f"<li style='padding:6px 0;border-bottom:1px solid var(--border);'><strong style='color:var(--text);'>{escape(log.event_type)}</strong> &middot; <span class='muted'>{escape(log.result)}</span> &middot; objetivo {log.target_user_id or '-'}</li>"
+        f"<li style='padding:6px 0;border-bottom:1px solid var(--border);'><strong style='color:var(--text);'>{escape(log.event_type)}</strong> &middot; <span class='muted'>{escape(log.result)}</span> &middot; objetivo {log.target_user_id or '-'}"
+        + (f" &middot; <span style='font-size:11px;color:var(--muted);'>{escape(log.ip_address)}</span>" if log.ip_address else "")
+        + (f" &middot; <span style='font-size:11px;color:var(--muted);' title='{escape(log.user_agent or '')}'>{escape((log.user_agent or '')[:40])}{'…' if log.user_agent and len(log.user_agent) > 40 else ''}</span>" if log.user_agent else "")
+        + "</li>"
         for log in logs
     ) or "<li>Sin eventos todav&iacute;a.</li>"
+
+    _notif_icons = {
+        "recovery_request": "&#128273;",
+        "cert_expiring_soon": "&#9888;",
+        "login_blocked": "&#128274;",
+    }
+    _notif_labels = {
+        "recovery_request": "Recuperaci&oacute;n",
+        "cert_expiring_soon": "Expiraci&oacute;n",
+        "login_blocked": "Cuenta bloqueada",
+    }
+    notif_list = notifications or []
+    unread_count = sum(1 for n in notif_list if not n.is_read)
+    badge = f" <span style='background:var(--bad);color:#fff;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:700;margin-left:6px;'>{unread_count}</span>" if unread_count else ""
+    notif_rows = ""
+    for n in notif_list:
+        icon = _notif_icons.get(n.type, "&#8226;")
+        label = _notif_labels.get(n.type, escape(n.type))
+        read_style = "" if not n.is_read else "opacity:.55;"
+        notif_rows += f"""
+        <div style="{read_style}display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:start;padding:12px 0;border-bottom:1px solid var(--border);">
+          <span style="font-size:18px;line-height:1;">{icon}</span>
+          <div>
+            <p style="font-weight:600;font-size:13px;margin-bottom:2px;">{escape(n.title)}</p>
+            <p style="font-size:12px;color:var(--muted);">{escape(n.message)}</p>
+            <p style="font-size:11px;color:var(--muted);margin-top:4px;">
+              <span style="background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;">{label}</span>
+              &nbsp;{escape(n.created_at.strftime('%Y-%m-%d %H:%M'))}
+            </p>
+          </div>
+          {"<span style='font-size:11px;color:var(--muted);'>Atendida</span>" if n.is_read else f"<form method='post' action='/ui/notifications/{n.id}/read'><button type='submit' style='font-size:11px;padding:4px 10px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);'>Marcar atendida</button></form>"}
+        </div>"""
+    if not notif_rows:
+        notif_rows = "<p class='muted' style='padding:12px 0;'>Sin notificaciones pendientes.</p>"
+    notifications_section = f"""
+    <details class="collapsible-panel" id="notifications">
+      <summary><h2>Notificaciones{badge}</h2><span class="summary-button">Abrir</span></summary>
+      <div class="panel-body" style="padding:10px 20px 20px;">
+        {notif_rows}
+      </div>
+    </details>
+    """
 
     return f"""
     <!doctype html>
@@ -1777,6 +1844,10 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
               Panel de administraci&oacute;n
             </a>
+            <a href="#notifications" class="sidebar-link" onclick="var el=document.getElementById('notifications');if(el){{el.setAttribute('open','');el.scrollIntoView({{behavior:'smooth',block:'start'}});}};return false;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              Notificaciones{"&nbsp;<span style='background:#dc2626;color:#fff;border-radius:999px;padding:0 6px;font-size:10px;font-weight:700;vertical-align:middle;'>"+str(unread_count)+"</span>" if unread_count else ""}
+            </a>
             <span class="sidebar-section-label">Accesos r&aacute;pidos</span>
             <a href="/admin/register?as_user={actor.id}" class="sidebar-link">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
@@ -1893,6 +1964,8 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
             </div>
           </details>
 
+          {notifications_section}
+
           {_render_beneficiarios_admin(actor, beneficiarios or [])}
 
         </main>
@@ -1999,12 +2072,15 @@ def self_register(
 
 @app.post("/login")
 async def login(
+    request: Request,
     identifier: str = Form(...),
     password: str = Form(...),
     private_key_file: UploadFile | None = File(default=None),
     certificate_file: UploadFile | None = File(default=None),
     db: Session = Depends(get_db),
 ):
+    ip = request.client.host if request.client else "desconocida"
+    ua = request.headers.get("user-agent", "desconocido")[:255]
     has_private_key = private_key_file is not None and bool(private_key_file.filename)
     has_certificate = certificate_file is not None and bool(certificate_file.filename)
 
@@ -2028,6 +2104,8 @@ async def login(
             resource="auth",
             result="success",
             metadata={"warning": "demo bypass without certificate"},
+            ip_address=ip,
+            user_agent=ua,
         )
         resp = RedirectResponse(url="/dashboard", status_code=303)
         return _login_redirect(resp, admin.id)
@@ -2060,6 +2138,8 @@ async def login(
                 resource="auth",
                 result="success",
                 metadata=proof,
+                ip_address=ip,
+                user_agent=ua,
             )
             if is_active_admin(user):
                 resp = RedirectResponse(url=f"/dashboard?notice=crypto-login", status_code=303)
@@ -2076,6 +2156,8 @@ async def login(
             resource="auth",
             result="failure",
             metadata={"identifier": identifier.strip().lower(), "reason": str(exc)},
+            ip_address=ip,
+            user_agent=ua,
         )
         return HTMLResponse(render_login_page(str(exc)), status_code=400)
 
@@ -2087,6 +2169,8 @@ async def login(
         action="login_with_password",
         resource="auth",
         result="success",
+        ip_address=ip,
+        user_agent=ua,
     )
 
     dest = "/dashboard" if is_active_admin(user) else "/portal"
@@ -2247,7 +2331,9 @@ def dashboard(
     roles = UserService.list_roles(db)
     backup_admin = AdminRecoveryService.get_backup_admin(db)
     certificate_history = UserService.list_certificate_history(db)
-    return HTMLResponse(render_dashboard(actor, users, roles, permissions, logs, backup_admin, certificate_history, notice, beneficiarios=BeneficiarioService.list_all(db)))
+    NotificationService.check_expiring_certificates(db)
+    notifications = NotificationService.list_all(db)
+    return HTMLResponse(render_dashboard(actor, users, roles, permissions, logs, backup_admin, certificate_history, notice, beneficiarios=BeneficiarioService.list_all(db), notifications=notifications))
 
 
 @app.get("/api/me", response_model=MeOut)
@@ -2345,7 +2431,9 @@ def ui_change_status(
         result="success",
         metadata=metadata,
     )
-    return redirect_home(actor.id, "status-updated")
+    back_href = "/dashboard" if is_active_admin(actor) else "/portal"
+    url = f"{back_href}?{urlencode({'notice': 'status-updated'})}"
+    return RedirectResponse(url=url, status_code=303)
 
 
 @app.post("/ui/users/{user_id}/expiration")
@@ -2383,7 +2471,9 @@ def ui_change_expiration(
             "reissued_certificate": bool(new_secret.strip()),
         },
     )
-    return redirect_home(actor.id, "expiration-updated")
+    back_href = "/dashboard" if is_active_admin(actor) else "/portal"
+    url = f"{back_href}?{urlencode({'notice': 'expiration-updated'})}"
+    return RedirectResponse(url=url, status_code=303)
 
 
 @app.post("/ui/users/{user_id}/role")
@@ -2415,7 +2505,9 @@ def ui_change_role(
         result="success",
         metadata={"role_id": role_id, "credential_updated": bool(new_secret.strip())},
     )
-    return redirect_home(actor.id, "role-updated")
+    back_href = "/dashboard" if is_active_admin(actor) else "/portal"
+    url = f"{back_href}?{urlencode({'notice': 'role-updated'})}"
+    return RedirectResponse(url=url, status_code=303)
 
 
 @app.post("/ui/users/{user_id}/certificate")
@@ -2446,7 +2538,9 @@ def ui_issue_certificate(
         result="success",
         metadata={"certificate_serial": updated.certificate_serial},
     )
-    return redirect_home(actor.id, "certificate-issued")
+    back_href = "/dashboard" if is_active_admin(actor) else "/portal"
+    url = f"{back_href}?{urlencode({'notice': 'certificate-issued'})}"
+    return RedirectResponse(url=url, status_code=303)
 
 
 @app.post("/ui/admin/recovery/activate-mirror")
@@ -2589,3 +2683,62 @@ def download_ca_certificate(db: Session = Depends(get_db), actor=Depends(_get_se
         media_type="application/x-pem-file",
         headers={"Content-Disposition": 'attachment; filename="casa-monarca-admin-firmante.crt.pem"'},
     )
+
+
+@app.post("/login/recovery-request")
+def recovery_request(
+    identifier: str = Form(...),
+    full_name: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = PasswordLoginService.find_user_by_identifier(db, identifier)
+    if user:
+        NotificationService.create(
+            db,
+            type="recovery_request",
+            title=f"Solicitud de recuperaci\u00f3n: {user.full_name}",
+            message=f"{user.full_name} ({user.email}) solicita recuperaci\u00f3n de acceso. Verificar identidad en persona antes de entregar nuevas credenciales.",
+            user_id=user.id,
+            metadata={"email": user.email, "requester_name": full_name},
+        )
+    return RedirectResponse(url=f"/login?{urlencode({'notice': 'recovery-sent'})}", status_code=303)
+
+
+@app.post("/ui/users/{user_id}/unlock")
+def ui_unlock_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    actor=Depends(_get_session_actor),
+):
+    if not is_active_admin(actor):
+        raise HTTPException(status_code=403, detail="Solo administradores pueden desbloquear cuentas")
+    user = UserService.get_user(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    UserService.unlock_user(db, user)
+    AuditService.log(
+        db,
+        event_type="account_unlocked",
+        actor_user_id=actor.id,
+        target_user_id=user.id,
+        action="unlock_account",
+        resource="users",
+        result="success",
+    )
+    back_href = f"/dashboard?{urlencode({'notice': 'user-unlocked'})}"
+    resp = RedirectResponse(url=back_href, status_code=303)
+    return _login_redirect(resp, actor.id)
+
+
+@app.post("/ui/notifications/{notification_id}/read")
+def ui_mark_notification_read(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    actor=Depends(_get_session_actor),
+):
+    if not is_active_admin(actor):
+        raise HTTPException(status_code=403, detail="Solo administradores pueden gestionar notificaciones")
+    NotificationService.mark_read(db, notification_id)
+    back_href = f"/dashboard?{urlencode({'notice': 'status-updated'})}"
+    resp = RedirectResponse(url=back_href, status_code=303)
+    return _login_redirect(resp, actor.id)

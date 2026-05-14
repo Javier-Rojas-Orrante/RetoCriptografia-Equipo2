@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
 from app.db import engine
-from app.models import AuditLog, Beneficiario, Permission, Role, RolePermission, SystemSecret, User
+from app.models import AuditLog, Beneficiario, Notification, Permission, Role, RolePermission, SystemSecret, User
 
 ROLE_DEFINITIONS = {
     "ADMIN": {
@@ -204,6 +204,8 @@ class AuditService:
         target_user_id: int | None = None,
         resource: str | None = None,
         metadata: dict | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ) -> None:
         db.add(
             AuditLog(
@@ -214,6 +216,8 @@ class AuditService:
                 resource=resource,
                 result=result,
                 metadata_json=metadata or {},
+                ip_address=ip_address,
+                user_agent=user_agent,
             )
         )
         db.commit()
@@ -221,6 +225,93 @@ class AuditService:
     @staticmethod
     def list_recent(db: Session, limit: int = 20) -> list[AuditLog]:
         return list(db.scalars(select(AuditLog).order_by(AuditLog.id.desc()).limit(limit)).all())
+
+
+class NotificationService:
+    MAX_LOGIN_ATTEMPTS = 10
+    EXPIRY_WARNING_DAYS = 30
+
+    @staticmethod
+    def create(
+        db: Session,
+        *,
+        type: str,
+        title: str,
+        message: str,
+        user_id: int | None = None,
+        metadata: dict | None = None,
+    ) -> Notification:
+        notif = Notification(
+            type=type,
+            user_id=user_id,
+            title=title,
+            message=message,
+            metadata_json=metadata or {},
+        )
+        db.add(notif)
+        db.commit()
+        db.refresh(notif)
+        return notif
+
+    @staticmethod
+    def list_all(db: Session, limit: int = 50) -> list[Notification]:
+        return list(db.scalars(select(Notification).order_by(Notification.id.desc()).limit(limit)).all())
+
+    @staticmethod
+    def list_unread(db: Session) -> list[Notification]:
+        return list(db.scalars(select(Notification).where(Notification.is_read.is_(False)).order_by(Notification.id.desc())).all())
+
+    @staticmethod
+    def mark_read(db: Session, notification_id: int) -> None:
+        notif = db.get(Notification, notification_id)
+        if notif:
+            notif.is_read = True
+            db.commit()
+
+    @staticmethod
+    def mark_all_read(db: Session) -> None:
+        for notif in db.scalars(select(Notification).where(Notification.is_read.is_(False))).all():
+            notif.is_read = True
+        db.commit()
+
+    @staticmethod
+    def check_expiring_certificates(db: Session) -> int:
+        cutoff = datetime.utcnow() + timedelta(days=NotificationService.EXPIRY_WARNING_DAYS)
+        users = list(
+            db.scalars(
+                select(User)
+                .options(joinedload(User.role))
+                .where(
+                    User.status == "active",
+                    User.certificate_not_after.is_not(None),
+                    User.certificate_not_after <= cutoff,
+                    User.certificate_not_after >= datetime.utcnow(),
+                    User.is_backup_admin.is_(False),
+                )
+            ).all()
+        )
+        created = 0
+        for user in users:
+            # No crear duplicados: solo si no hay una de este tipo para este usuario en las últimas 24h
+            existing = db.scalar(
+                select(Notification).where(
+                    Notification.type == "cert_expiring_soon",
+                    Notification.user_id == user.id,
+                    Notification.created_at >= datetime.utcnow() - timedelta(hours=24),
+                ).limit(1)
+            )
+            if not existing:
+                days_left = (user.certificate_not_after - datetime.utcnow()).days
+                NotificationService.create(
+                    db,
+                    type="cert_expiring_soon",
+                    title=f"Certificado próximo a vencer: {user.full_name}",
+                    message=f"El certificado de {user.full_name} ({user.email}) vence en {days_left} días ({user.certificate_not_after.strftime('%Y-%m-%d')}). Revocar y re-emitir desde la sección Credencial.",
+                    user_id=user.id,
+                    metadata={"days_left": days_left, "expires": user.certificate_not_after.isoformat()},
+                )
+                created += 1
+        return created
 
 
 class PasswordService:
@@ -283,12 +374,29 @@ class SchemaService:
             "password_hash": "VARCHAR(255)",
             "is_backup_admin": boolean_false_default,
             "mirror_source_user_id": "INTEGER",
+            "login_attempts": "INTEGER NOT NULL DEFAULT 0",
+            "login_locked_until": datetime_type,
         }
 
         with engine.begin() as connection:
             for column_name, column_type in extra_columns.items():
                 if column_name not in current_columns:
                     connection.execute(text(f"ALTER TABLE users ADD COLUMN {column_name} {column_type}"))
+
+    @staticmethod
+    def ensure_audit_log_columns() -> None:
+        inspector = inspect(engine)
+        if "audit_logs" not in inspector.get_table_names():
+            return
+        current_columns = {column["name"] for column in inspector.get_columns("audit_logs")}
+        extra_columns = {
+            "ip_address": "VARCHAR(64)",
+            "user_agent": "VARCHAR(255)",
+        }
+        with engine.begin() as connection:
+            for column_name, column_type in extra_columns.items():
+                if column_name not in current_columns:
+                    connection.execute(text(f"ALTER TABLE audit_logs ADD COLUMN {column_name} {column_type}"))
 
 
 class CertificateAuthorityService:
@@ -919,6 +1027,8 @@ class SignatureLoginService:
         user = PasswordLoginService.find_user_by_identifier(db, identifier)
         if not user:
             raise ValueError("Usuario no registrado")
+        if user.login_locked_until is not None:
+            raise ValueError("Cuenta bloqueada por demasiados intentos fallidos. Contacta al administrador.")
         if user.status != "active":
             raise ValueError(f"La cuenta no esta activa: {user.status}")
         if not role_requires_crypto(user):
@@ -937,6 +1047,20 @@ class SignatureLoginService:
                 password=password.encode() if password else None,
             )
         except Exception as exc:
+            user.login_attempts = (user.login_attempts or 0) + 1
+            if user.login_attempts >= NotificationService.MAX_LOGIN_ATTEMPTS:
+                user.login_locked_until = datetime.utcnow()
+                db.commit()
+                NotificationService.create(
+                    db,
+                    type="login_blocked",
+                    title=f"Cuenta bloqueada: {user.full_name}",
+                    message=f"La cuenta de {user.full_name} ({user.email}) fue bloqueada tras {NotificationService.MAX_LOGIN_ATTEMPTS} intentos fallidos. Desbloquear desde Gestionar cuenta.",
+                    user_id=user.id,
+                    metadata={"attempts": user.login_attempts},
+                )
+                raise ValueError("Cuenta bloqueada por demasiados intentos fallidos. Contacta al administrador.") from exc
+            db.commit()
             raise ValueError("No se pudo abrir private_key.pem con esa contrasena") from exc
 
         if not isinstance(private_key, rsa.RSAPrivateKey):
@@ -1156,12 +1280,32 @@ class PasswordLoginService:
         user = cls.find_user_by_identifier(db, clean_identifier)
         if not user:
             raise ValueError("Usuario no registrado")
+        if user.login_locked_until is not None:
+            raise ValueError("Cuenta bloqueada por demasiados intentos fallidos. Contacta al administrador.")
         if user.status != "active":
             raise ValueError(f"La cuenta no esta activa: {user.status}")
         if role_requires_crypto(user) and user.certificate_serial:
             raise ValueError("Este usuario requiere autenticacion con private_key.pem y certificate.pem")
         if not PasswordService.verify_password(password, user.password_hash):
-            raise ValueError("Contrasena incorrecta")
+            user.login_attempts = (user.login_attempts or 0) + 1
+            if user.login_attempts >= NotificationService.MAX_LOGIN_ATTEMPTS:
+                user.login_locked_until = datetime.utcnow()
+                db.commit()
+                NotificationService.create(
+                    db,
+                    type="login_blocked",
+                    title=f"Cuenta bloqueada: {user.full_name}",
+                    message=f"La cuenta de {user.full_name} ({user.email}) fue bloqueada tras {NotificationService.MAX_LOGIN_ATTEMPTS} intentos fallidos de inicio de sesión. Desbloquear manualmente desde Gestionar cuenta.",
+                    user_id=user.id,
+                    metadata={"attempts": user.login_attempts},
+                )
+                raise ValueError("Cuenta bloqueada por demasiados intentos fallidos. Contacta al administrador.")
+            db.commit()
+            remaining = NotificationService.MAX_LOGIN_ATTEMPTS - user.login_attempts
+            raise ValueError(f"Contraseña incorrecta. {remaining} intentos restantes antes del bloqueo.")
+        user.login_attempts = 0
+        user.login_locked_until = None
+        db.commit()
         return user
 
 
@@ -1323,6 +1467,7 @@ class BootstrapService:
     @staticmethod
     def seed(db: Session) -> None:
         SchemaService.ensure_user_certificate_columns()
+        SchemaService.ensure_audit_log_columns()
         CertificateAuthorityService.ensure_ca(db)
         BootstrapService._upsert_roles_and_permissions(db)
         db.commit()
@@ -1657,4 +1802,13 @@ class UserService:
             db.commit()
             db.refresh(user)
             return CertificateService.issue_for_user(db, user, new_secret, reissue=True)
+        return user
+
+    @staticmethod
+    def unlock_user(db: Session, user: User) -> User:
+        user.login_attempts = 0
+        user.login_locked_until = None
+        user.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(user)
         return user
