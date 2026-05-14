@@ -1488,6 +1488,8 @@ def _render_beneficiarios_admin(actor, bens: list) -> str:
 
 
 def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certificate_history, notice: str | None = None, beneficiarios=None, notifications=None, section: str = "usuarios") -> str:
+    _name_parts = actor.full_name.split()
+    _initials = (_name_parts[0][0] + (_name_parts[-1][0] if len(_name_parts) > 1 else "")).upper()
     permission_text = ", ".join(f"{item['resource']}:{item['action']}" for item in permissions) or "sin permisos"
     actor_options = "".join(
         f"<option value='{user.id}'>{escape(user.full_name)} ({escape(user.role.name)})</option>"
@@ -2031,29 +2033,40 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
           *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
           body {{ background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 14px; line-height: 1.6; -webkit-font-smoothing: antialiased; display: flex; min-height: 100vh; }}
           /* ── Sidebar ── */
-          .sidebar {{ width:230px; flex-shrink:0; background:#1a2332; display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; z-index:100; overflow-y:auto; }}
+          .sidebar {{ width:290px; flex-shrink:0; background:#1a2332; display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; z-index:100; overflow-y:auto; overflow-x:hidden; }}
           .sidebar-brand {{ padding:22px 20px 18px; border-bottom:1px solid rgba(255,255,255,0.07); }}
           .sidebar-brand-logo {{ display:flex; align-items:center; gap:10px; margin-bottom:6px; }}
           .sidebar-brand-text {{ line-height:1.2; }}
-          .sidebar-brand-name {{ font-size:15px; font-weight:800; color:#fff; letter-spacing:-0.3px; }}
+          .sidebar-brand-name {{ font-size:17px; font-weight:800; color:#fff; letter-spacing:-0.3px; }}
           .sidebar-brand-sub {{ font-size:10px; color:#8b9ab0; text-transform:uppercase; letter-spacing:.08em; font-weight:500; }}
           .sidebar-tagline {{ font-size:11px; color:#8b9ab0; line-height:1.4; margin-top:6px; }}
           .sidebar-nav {{ flex:1; padding:16px 12px; display:flex; flex-direction:column; gap:2px; }}
-          .sidebar-section-label {{ font-size:10px; font-weight:700; color:#8b9ab0; text-transform:uppercase; letter-spacing:.1em; padding:10px 8px 4px; margin-top:6px; }}
-          .sidebar-link {{ display:flex; align-items:center; gap:9px; padding:8px 10px; border-radius:8px; color:#e8e4de; font-size:13px; font-weight:500; text-decoration:none; transition:background .15s; border-left:2px solid transparent; }}
+          .sidebar-section-label {{ font-size:11px; font-weight:700; color:#8b9ab0; text-transform:uppercase; letter-spacing:.1em; padding:10px 8px 4px; margin-top:6px; }}
+          .sidebar-link {{ display:flex; align-items:center; gap:9px; padding:8px 10px; border-radius:8px; color:#e8e4de; font-size:15px; font-weight:500; text-decoration:none; transition:background .15s; border-left:2px solid transparent; }}
           .sidebar-link:hover {{ background:rgba(255,255,255,0.07); color:#fff; text-decoration:none; }}
-          .sidebar-link.active {{ background:rgba(209,20,90,0.18); border-left-color:#d1145a; color:#fff; }}
+          .sidebar-link.active {{ background:rgba(224,96,32,0.18); border-left-color:#e06020; color:#fff; }}
           .sidebar-link svg {{ flex-shrink:0; opacity:.7; }}
           .sidebar-link.active svg {{ opacity:1; }}
-          .sidebar-footer {{ padding:16px 12px; border-top:1px solid rgba(255,255,255,0.07); }}
-          .sidebar-logout {{ display:flex; align-items:center; gap:8px; color:#8b9ab0; font-size:12px; font-weight:500; text-decoration:none; padding:6px 8px; border-radius:7px; transition:color .15s,background .15s; }}
+          .sidebar-footer {{ padding:16px 12px; border-top:1px solid rgba(255,255,255,0.07); position:relative; }}
+          .sidebar-logout {{ display:flex; align-items:center; gap:8px; color:#8b9ab0; font-size:13px; font-weight:500; text-decoration:none; padding:6px 8px; border-radius:7px; transition:color .15s,background .15s; }}
           .sidebar-logout:hover {{ color:#fff; background:rgba(255,255,255,0.07); text-decoration:none; }}
-          .sidebar-user {{ padding:14px 16px 0; }}
-          .sidebar-user-name {{ font-size:13px; font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+          .sidebar-user {{ padding:14px 16px 0; display:flex; align-items:center; gap:10px; }}
+          .sidebar-avatar {{ width:36px; height:36px; border-radius:50%; background:rgba(224,96,32,0.25); color:#e06020; font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; letter-spacing:-0.5px; }}
+          .sidebar-user-info {{ min-width:0; }}
+          .sidebar-user-name {{ font-size:15px; font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
           .sidebar-user-role {{ font-size:11px; color:#8b9ab0; margin-top:2px; }}
+          /* ── Watermarks ── */
+          .page-bg-watermark {{ position:fixed; top:-80px; right:-100px; width:900px; pointer-events:none; opacity:0.13; z-index:0; transform:scaleX(-1); }}
+          .page-bg-watermark-2 {{ position:fixed; bottom:-80px; right:-60px; width:700px; pointer-events:none; opacity:0.11; z-index:0; transform:rotate(-15deg); }}
+          .sidebar-watermark {{ position:absolute; bottom:40px; right:-40px; width:310px; pointer-events:none; opacity:0.12; transform:scaleX(-1) rotate(20deg); }}
+          /* ── Page title ── */
+          .page-title {{ font-size:30px; font-weight:800; letter-spacing:-0.6px; }}
+          .page-title-accent {{ width:42px; height:3px; background:var(--accent); margin-top:6px; }}
           /* ── Page wrapper ── */
-          .page-wrapper {{ margin-left:230px; flex:1; min-width:0; }}
-          main {{ max-width:1200px; margin:0 auto; padding:28px 20px 64px; display:flex; flex-direction:column; gap:18px; }}
+          .page-wrapper {{ margin-left:290px; flex:1; min-width:0; position:relative; z-index:1; }}
+          main {{ max-width:1400px; margin:0 auto; padding:36px 48px 80px; display:flex; flex-direction:column; gap:18px; z-index:1; }}
+          .card, .panel {{ position:relative; z-index:2; }}
+          .hero {{ position:relative; z-index:2; }}
           @media (max-width:700px) {{ .sidebar {{ display:none; }} .page-wrapper {{ margin-left:0; }} }}
           h1 {{ font-size: 20px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.3; }}
           h2 {{ font-size: 15px; font-weight: 600; letter-spacing: -0.1px; line-height: 1.4; }}
@@ -2127,6 +2140,8 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
         </style>
       </head>
       <body>
+        <img class="page-bg-watermark" src="/static/mariposa.png" alt="">
+        <img class="page-bg-watermark-2" src="/static/mariposa.png" alt="">
         <aside class="sidebar">
           <div class="sidebar-brand">
             <div class="sidebar-brand-logo">
@@ -2139,8 +2154,11 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
             <p class="sidebar-tagline">Ayuda Humanitaria al Migrante, A.B.P.</p>
           </div>
           <div class="sidebar-user">
-            <div class="sidebar-user-name">{escape(actor.full_name)}</div>
-            <div class="sidebar-user-role">{escape(actor.role.name)}</div>
+            <div class="sidebar-avatar">{_initials}</div>
+            <div class="sidebar-user-info">
+              <div class="sidebar-user-name">{escape(actor.full_name)}</div>
+              <div class="sidebar-user-role">{escape(actor.role.name)}</div>
+            </div>
           </div>
           <nav class="sidebar-nav">
             <span class="sidebar-section-label">Navegaci&oacute;n</span>
@@ -2161,6 +2179,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
             {_slink("historial", "Historial", '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>')}
           </nav>
           <div class="sidebar-footer">
+            <img class="sidebar-watermark" src="/static/mariposa.png" alt="">
             <a href="/logout" class="sidebar-logout">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
               Salir / cambiar usuario
