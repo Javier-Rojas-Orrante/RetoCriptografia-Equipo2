@@ -370,12 +370,20 @@ def base_page(title: str, body: str, actor=None, portal_sections: list | None = 
         '<rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>'
         '</svg>Panel de administraci&oacute;n</a>'
     ) if _is_admin else ""
-    _user_block = (
-        f'<div class="sidebar-user">'
-        f'<div class="sidebar-user-name">{escape(actor.full_name)}</div>'
-        f'<div class="sidebar-user-role">{escape(actor.role.name)}</div>'
-        f'</div>'
-    ) if actor else ""
+    if actor:
+        _initials = "".join(p[0].upper() for p in actor.full_name.split() if p)[:2]
+        _user_block = (
+            f'<div class="sidebar-user">'
+            f'<div class="sidebar-avatar">{escape(_initials)}</div>'
+            f'<div style="flex:1;min-width:0;">'
+            f'<div class="sidebar-user-name">{escape(actor.full_name)}</div>'
+            f'<div class="sidebar-user-role">{escape(actor.role.name)}</div>'
+            f'</div>'
+            f'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:0.5;"><polyline points="6 9 12 15 18 9"/></svg>'
+            f'</div>'
+        )
+    else:
+        _user_block = ""
 
     if portal_sections:
         _sec_items = '<span class="sidebar-section-label">En esta p&aacute;gina</span>'
@@ -398,9 +406,9 @@ def base_page(title: str, body: str, actor=None, portal_sections: list | None = 
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
         <style>
           :root {{
-            --bg: #f6f2ec;
+            --bg: #f5f0e8;
             --surface: #ffffff;
-            --surface-2: #faf7f3;
+            --surface-2: #faf7f2;
             --border: #e5ddd3;
             --border-strong: #cfc4b5;
             --text: #1a2332;
@@ -408,13 +416,11 @@ def base_page(title: str, body: str, actor=None, portal_sections: list | None = 
             --accent: #e06020;
             --accent-dark: #bf4f10;
             --accent-light: #fff3eb;
-            --brand-pink: #d1145a;
-            --brand-orange: #f06b35;
             --sidebar-bg: #1a2332;
             --sidebar-text: #e8e4de;
             --sidebar-muted: #8b9ab0;
-            --sidebar-active: rgba(209,20,90,0.18);
-            --sidebar-active-border: #d1145a;
+            --sidebar-active: rgba(224,96,32,0.18);
+            --sidebar-active-border: #e06020;
             --ok: #166534;
             --ok-bg: #dcfce7;
             --ok-border: #86efac;
@@ -432,16 +438,33 @@ def base_page(title: str, body: str, actor=None, portal_sections: list | None = 
           html, body {{ height: 100%; }}
           body {{ background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 14px; line-height: 1.6; -webkit-font-smoothing: antialiased; display: flex; min-height: 100vh; }}
 
+          /* ─── Watermark ───────────────────────────────── */
+          .page-bg-watermark {{
+            position: fixed; top: -80px; right: -100px;
+            width: 900px; pointer-events: none; opacity: 0.13; z-index: 0;
+            transform: scaleX(-1);
+          }}
+          .page-bg-watermark-2 {{
+            position: fixed; bottom: -80px; right: -60px;
+            width: 700px; pointer-events: none; opacity: 0.11; z-index: 0;
+            transform: rotate(-15deg);
+          }}
+          .sidebar-watermark {{
+            position: absolute; bottom: 40px; right: -40px;
+            width: 310px; pointer-events: none; opacity: 0.12;
+            transform: scaleX(-1) rotate(20deg);
+          }}
+
           /* ─── Sidebar ─────────────────────────────────── */
           .sidebar {{
-            width: 230px; flex-shrink: 0;
+            width: 290px; flex-shrink: 0;
             background: var(--sidebar-bg);
             display: flex; flex-direction: column;
             position: fixed; top: 0; left: 0; bottom: 0;
-            z-index: 100; overflow-y: auto;
+            z-index: 100; overflow-y: auto; overflow-x: hidden;
           }}
           .sidebar-brand {{
-            padding: 22px 20px 18px;
+            padding: 20px 18px 16px;
             border-bottom: 1px solid rgba(255,255,255,0.07);
           }}
           .sidebar-brand-logo {{
@@ -449,26 +472,38 @@ def base_page(title: str, body: str, actor=None, portal_sections: list | None = 
           }}
           .sidebar-brand-text {{ line-height: 1.2; }}
           .sidebar-brand-name {{
-            font-size: 15px; font-weight: 800; color: #fff; letter-spacing: -0.3px;
+            font-size: 17px; font-weight: 800; color: #fff; letter-spacing: -0.3px;
           }}
           .sidebar-brand-sub {{
-            font-size: 10px; color: var(--sidebar-muted); text-transform: uppercase; letter-spacing: .08em; font-weight: 500;
+            font-size: 11px; color: var(--sidebar-muted); text-transform: uppercase; letter-spacing: .08em; font-weight: 500;
           }}
           .sidebar-tagline {{
-            font-size: 11px; color: var(--sidebar-muted); line-height: 1.4; margin-top: 6px;
+            font-size: 12px; color: var(--sidebar-muted); line-height: 1.4; margin-top: 6px;
           }}
+          .sidebar-user {{
+            display: flex; align-items: center; gap: 10px;
+            padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.07);
+          }}
+          .sidebar-avatar {{
+            width: 36px; height: 36px; border-radius: 50%;
+            background: #2d5a3d; color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 13px; flex-shrink: 0; letter-spacing: 0.5px;
+          }}
+          .sidebar-user-name {{ font-size: 15px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+          .sidebar-user-role {{ font-size: 12px; color: var(--sidebar-muted); margin-top: 1px; }}
           .sidebar-nav {{
-            flex: 1; padding: 16px 12px;
+            flex: 1; padding: 14px 10px;
             display: flex; flex-direction: column; gap: 2px;
           }}
           .sidebar-section-label {{
-            font-size: 10px; font-weight: 700; color: var(--sidebar-muted); text-transform: uppercase;
-            letter-spacing: .1em; padding: 10px 8px 4px; margin-top: 6px;
+            font-size: 11px; font-weight: 700; color: var(--sidebar-muted); text-transform: uppercase;
+            letter-spacing: .1em; padding: 10px 8px 4px; margin-top: 4px;
           }}
           .sidebar-link {{
             display: flex; align-items: center; gap: 9px;
-            padding: 8px 10px; border-radius: 8px;
-            color: var(--sidebar-text); font-size: 13px; font-weight: 500;
+            padding: 9px 10px; border-radius: 8px;
+            color: var(--sidebar-text); font-size: 15px; font-weight: 500;
             text-decoration: none; transition: background .15s, color .15s;
             border-left: 2px solid transparent;
           }}
@@ -478,35 +513,31 @@ def base_page(title: str, body: str, actor=None, portal_sections: list | None = 
             border-left-color: var(--sidebar-active-border);
             color: #fff;
           }}
-          .sidebar-link svg {{ flex-shrink: 0; opacity: .7; }}
+          .sidebar-link svg {{ flex-shrink: 0; opacity: .75; }}
           .sidebar-link.active svg {{ opacity: 1; }}
           .sidebar-footer {{
-            padding: 16px 12px;
+            padding: 14px 10px;
             border-top: 1px solid rgba(255,255,255,0.07);
           }}
           .sidebar-logout {{
             display: flex; align-items: center; gap: 8px;
-            color: var(--sidebar-muted); font-size: 12px; font-weight: 500;
-            text-decoration: none; padding: 6px 8px; border-radius: 7px;
+            color: var(--sidebar-muted); font-size: 13px; font-weight: 500;
+            text-decoration: none; padding: 7px 10px; border-radius: 7px;
             transition: color .15s, background .15s;
           }}
           .sidebar-logout:hover {{ color: #fff; background: rgba(255,255,255,0.07); text-decoration: none; }}
-          .sidebar-user {{ padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.07); }}
-          .sidebar-user-name {{ font-size: 13px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
-          .sidebar-user-role {{ font-size: 11px; color: var(--sidebar-muted); margin-top: 2px; }}
 
           /* ─── Main content ────────────────────────────── */
           .page-wrapper {{
-            margin-left: 230px;
-            flex: 1;
-            min-width: 0;
+            margin-left: 290px; flex: 1; min-width: 0;
+            position: relative; z-index: 1;
           }}
-          main {{ max-width: 900px; margin: 0 auto; padding: 32px 28px 72px; }}
+          main {{ max-width: 1400px; margin: 0 auto; padding: 36px 48px 80px; position: relative; z-index: 1; }}
           h1 {{ font-size: 20px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.3; }}
           h2 {{ font-size: 15px; font-weight: 600; letter-spacing: -0.1px; line-height: 1.4; }}
           p {{ margin: 0; }}
-          .card {{ background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); }}
-          .panel {{ background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: 24px; }}
+          .card {{ background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); position: relative; z-index: 2; }}
+          .panel {{ background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: 24px; position: relative; z-index: 2; }}
           .stack {{ display: flex; flex-direction: column; gap: 14px; }}
           .grid {{ display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }}
           label {{ display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 500; color: var(--text); }}
@@ -543,6 +574,9 @@ def base_page(title: str, body: str, actor=None, portal_sections: list | None = 
           .crypto-missing {{ color: var(--muted); font-size: 12px; }}
           .crypto-once {{ color: var(--warn); font-size: 11px; font-weight: 600; }}
           .crypto-delivered {{ color: var(--muted); font-size: 12px; }}
+          /* Page title style */
+          .page-title {{ font-size: 30px; font-weight: 800; letter-spacing: -0.6px; line-height: 1.2; color: var(--text); }}
+          .page-title-accent {{ width: 42px; height: 3px; background: var(--accent); border-radius: 2px; margin: 8px 0 6px; }}
 
           /* ─── Responsive ──────────────────────────────── */
           @media (max-width: 700px) {{
@@ -550,10 +584,13 @@ def base_page(title: str, body: str, actor=None, portal_sections: list | None = 
             .page-wrapper {{ margin-left: 0; }}
             main {{ padding: 20px 14px 60px; }}
             .crypto-row {{ grid-template-columns: 1fr; gap: 6px; }}
+            .page-bg-watermark {{ display: none; }}
           }}
         </style>
       </head>
       <body>
+        <img src="/static/mariposa.png" class="page-bg-watermark" alt="" aria-hidden="true">
+        <img src="/static/mariposa.png" class="page-bg-watermark-2" alt="" aria-hidden="true">
         <aside class="sidebar">
           <div class="sidebar-brand">
             <div class="sidebar-brand-logo">
@@ -575,6 +612,7 @@ def base_page(title: str, body: str, actor=None, portal_sections: list | None = 
             {_admin_nav}
             {_portal_sections_html}
           </nav>
+          <img src="/static/mariposa.png" class="sidebar-watermark" alt="" aria-hidden="true">
           <div class="sidebar-footer">
             <a href="/logout" class="sidebar-logout">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -1250,10 +1288,10 @@ def render_portal_page(
 
     # --- Section: Mi cuenta ---
     _cuenta_content = f"""
-    <section style="margin-bottom:20px;">
-      <h1 style="font-size:20px;font-weight:700;letter-spacing:-0.3px;margin-bottom:4px;">Mi cuenta</h1>
-      <p class="muted" style="font-size:13px;">Bienvenido/a, <strong style="color:var(--text);">{escape(actor.full_name)}</strong></p>
-      <hr style="margin:16px 0;border-color:var(--border);">
+    <section style="margin-bottom:24px;">
+      <h1 class="page-title">Mi cuenta</h1>
+      <div class="page-title-accent"></div>
+      <p class="muted" style="font-size:14px;margin-top:2px;">Bienvenido/a, <strong style="color:var(--text);">{escape(actor.full_name)}</strong></p>
       {verified_html}{render_notice(notice)}
     </section>
     <div class="card" style="padding:28px;margin-bottom:16px;">
@@ -1287,22 +1325,21 @@ def render_portal_page(
     </div>
     """
 
-    # --- Section: Mis credenciales ---
     if role_requires_crypto(actor):
         _credenciales_content = f"""
-    <section style="margin-bottom:20px;">
-      <h1 style="font-size:20px;font-weight:700;letter-spacing:-0.3px;margin-bottom:4px;">Mis credenciales</h1>
-      <p class="muted" style="font-size:13px;">Archivos de acceso y certificado de identidad</p>
-      <hr style="margin:16px 0;border-color:var(--border);">
+    <section style="margin-bottom:24px;">
+      <h1 class="page-title">Mis credenciales</h1>
+      <div class="page-title-accent"></div>
+      <p class="muted" style="font-size:14px;margin-top:2px;">Archivos de acceso y certificado de identidad</p>
       {render_notice(notice)}
     </section>
     <div class="card" style="padding:28px;">{cert_section}</div>
     """
     else:
         _credenciales_content = f"""
-    <section style="margin-bottom:20px;">
-      <h1 style="font-size:20px;font-weight:700;letter-spacing:-0.3px;margin-bottom:4px;">Mis credenciales</h1>
-      <hr style="margin:16px 0;border-color:var(--border);">
+    <section style="margin-bottom:24px;">
+      <h1 class="page-title">Mis credenciales</h1>
+      <div class="page-title-accent"></div>
       {render_notice(notice)}
     </section>
     <div class="card" style="padding:28px;"><p class="muted">Tu rol utiliza acceso con usuario y contrase&ntilde;a. No tienes archivos de acceso asignados.</p></div>
@@ -1311,19 +1348,19 @@ def render_portal_page(
     # --- Section: Beneficiarios ---
     if actor.status == "active":
         _beneficiarios_content = f"""
-    <section style="margin-bottom:20px;">
-      <h1 style="font-size:20px;font-weight:700;letter-spacing:-0.3px;margin-bottom:4px;">Beneficiarios</h1>
-      <p class="muted" style="font-size:13px;">Gesti&oacute;n de registros de beneficiarios</p>
-      <hr style="margin:16px 0;border-color:var(--border);">
+    <section style="margin-bottom:24px;">
+      <h1 class="page-title">Beneficiarios</h1>
+      <div class="page-title-accent"></div>
+      <p class="muted" style="font-size:14px;margin-top:2px;">Gesti&oacute;n de registros de beneficiarios</p>
       {render_notice(notice)}
     </section>
     {demo_section}
     """
     else:
         _beneficiarios_content = f"""
-    <section style="margin-bottom:20px;">
-      <h1 style="font-size:20px;font-weight:700;letter-spacing:-0.3px;">Beneficiarios</h1>
-      <hr style="margin:16px 0;border-color:var(--border);">
+    <section style="margin-bottom:24px;">
+      <h1 class="page-title">Beneficiarios</h1>
+      <div class="page-title-accent"></div>
     </section>
     <div class='error'>Tu cuenta est&aacute; en estado <strong>{escape(actor.status)}</strong>. Contacta a un administrador para restablecer el acceso.</div>
     """
@@ -1749,14 +1786,17 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
     _base_url = f"/dashboard?as_user={actor.id}&section="
 
     def _sec_hdr(title, subtitle="", extra_btn=""):
-        sub_p = f'<p style="color:var(--muted);font-size:13px;">{subtitle}</p>' if subtitle else ""
+        sub_p = f'<p style="color:var(--muted);font-size:14px;margin-top:2px;">{subtitle}</p>' if subtitle else ""
         return f"""
-        <section class="hero">
+        <section style="margin-bottom:24px;">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;">
-            <div><h1 style="margin-bottom:4px;">{title}</h1>{sub_p}</div>
+            <div>
+              <h1 class="page-title">{title}</h1>
+              <div class="page-title-accent"></div>
+              {sub_p}
+            </div>
             {extra_btn}
           </div>
-          <hr style="border:none;border-top:1px solid var(--border);margin:18px 0 14px;">
           {render_notice(notice)}
         </section>"""
 
