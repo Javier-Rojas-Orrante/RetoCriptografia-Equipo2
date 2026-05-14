@@ -104,13 +104,13 @@ NOTICE_MESSAGES = {
     "expiration-updated": "La fecha de expiracion fue actualizada.",
     "role-updated": "El rol del usuario fue actualizado.",
     "recovery-activated": "El administrador espejo ya esta activo. El admin principal fue revocado y debe regenerarse un nuevo respaldo.",
-    "certificate-issued": "El material criptografico del usuario fue emitido o reemitido.",
-    "crypto-login": "Identidad verificada con el certificado criptografico del usuario.",
+    "certificate-issued": "Las credenciales del usuario fueron generadas correctamente.",
+    "crypto-login": "Identidad verificada con los archivos de acceso del usuario.",
     "beneficiario-creado": "Beneficiario registrado correctamente. Ya está visible para el equipo operativo.",
     "registro-enviado": "Solicitud de acceso enviada. Un administrador revisará tu cuenta y te notificará cuando esté activa.",
     "recovery-sent": "Solicitud enviada. Un administrador revisará tu caso y te contactará para verificar tu identidad.",
     "user-unlocked": "La cuenta fue desbloqueada correctamente.",
-    "private-key-already-delivered": "La llave privada ya fue entregada y se eliminó del servidor por seguridad. Para obtener una nueva, el administrador debe reemitir los artefactos criptográficos.",
+    "private-key-already-delivered": "El archivo de acceso ya fue descargado una sola vez y fue eliminado del servidor por seguridad. Para obtener uno nuevo, el administrador debe generar nuevas credenciales.",
 }
 
 
@@ -209,8 +209,8 @@ def render_certificate_page(title: str, summary: dict, back_href: str) -> str:
             --border-strong: #cfc4b5;
             --text: #1a2332;
             --muted: #6b7280;
-            --accent: #a64b2a;
-            --accent-dark: #8a3d22;
+            --accent: #e06020;
+            --accent-dark: #bf4f10;
             --radius: 10px;
             --radius-lg: 14px;
             --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.05);
@@ -284,101 +284,70 @@ def _crypto_file_state(user, viewer_id: int) -> str:
     query = f"?as_user={viewer_id}"
     items = []
 
-    public_key_pem = CertificateService.get_user_public_key_pem(user)
-
     if CertificateService.private_key_download_available(user):
-        items.append(_crypto_file_link(f"/ui/users/{user.id}/private-key.pem{query}", "private_key.pem"))
-        items.append("<span class='crypto-once'>entrega unica</span>")
+        items.append(_crypto_file_link(f"/ui/users/{user.id}/private-key.pem{query}", "Archivo de acceso"))
+        items.append("<span class='crypto-once'>descarga &uacute;nica</span>")
     elif user.private_key_delivered_at:
-        items.append("<span class='crypto-delivered'>private_key.pem entregada</span>")
+        items.append("<span class='crypto-delivered'>Archivo de acceso entregado</span>")
     else:
-        items.append("<span class='crypto-missing'>private_key.pem pendiente</span>")
-
-    if public_key_pem:
-        items.append(_crypto_file_link(f"/ui/users/{user.id}/public-key.pem{query}", "public_key.pem"))
-    else:
-        items.append("<span class='crypto-missing'>public_key.pem pendiente</span>")
+        items.append("<span class='crypto-missing'>Archivo de acceso pendiente</span>")
 
     if user.certificate_pem:
-        items.append(_crypto_file_link(f"/ui/users/{user.id}/certificate.pem{query}", "certificate.pem"))
+        items.append(_crypto_file_link(f"/ui/users/{user.id}/certificate.pem{query}", "Certificado de identidad"))
     else:
-        items.append("<span class='crypto-missing'>certificate.pem pendiente</span>")
+        items.append("<span class='crypto-missing'>Certificado pendiente</span>")
 
-    return " · ".join(items)
+    return " &middot; ".join(items)
 
 
 def _render_crypto_flow(user, viewer_id: int, issuer_name: str | None = None, verified: bool = False) -> str:
     material = CertificateService.describe_crypto_material(user, issuer_name=issuer_name)
     if not material:
-        return "<p class='muted'>Acceso con usuario y contrasena.</p>"
+        return "<p class='muted'>Acceso con usuario y contrase&ntilde;a.</p>"
 
     verified_chip = (
-        "<span class='crypto-pill crypto-pill-ok'>verificado en esta sesion</span>" if verified else ""
+        "<span class='crypto-pill crypto-pill-ok'>Identidad verificada en esta sesi&oacute;n</span>" if verified else ""
     )
-    signer_view_href = None
-    if user.certificate_pem and user.role.code == "ADMIN":
-        signer_view_href = f"/ui/users/{user.id}/certificate/view?as_user={viewer_id}"
-    elif user.certificate_issuer_user_id and viewer_id != user.id:
-        signer_view_href = f"/ui/users/{user.certificate_issuer_user_id}/certificate/view?as_user={viewer_id}"
-    signer_summary = (
-        f"{escape(material['signed_by'])} · {escape(material['certificate_signature_algorithm'])}"
-        if material["has_certificate"]
-        else "pendiente"
-    )
-    verify_summary = (
-        f"{escape(material['challenge_signed_with'])} -> {escape(material['challenge_verified_with'])}"
-    )
-    if signer_view_href:
-        signer_summary = (
-            f"{_crypto_file_link(signer_view_href, material['signed_by'])} · "
-            f"{escape(material['certificate_signature_algorithm'])}"
-        )
+    query = f"?as_user={viewer_id}"
+
+    # Access file row
+    if CertificateService.private_key_download_available(user):
+        key_val = f'<a href="/ui/users/{user.id}/private-key.pem{query}">Descargar archivo de acceso</a> <span class="crypto-once">&middot; Descarga &uacute;nica</span>'
+    elif user.private_key_delivered_at:
+        key_val = "<span class='crypto-delivered'>&#10003; Archivo de acceso entregado</span>"
+    else:
+        key_val = "<span class='crypto-missing'>Archivo de acceso pendiente</span>"
+
+    # Certificate row
+    if user.certificate_pem:
+        expiry = ""
+        if user.certificate_not_after:
+            expiry = f" &middot; <span style='font-size:11px;color:var(--muted);'>V&aacute;lido hasta {user.certificate_not_after.strftime('%d/%m/%Y')}</span>"
+        cert_val = f'<a href="/ui/users/{user.id}/certificate.pem{query}">Descargar certificado</a>{expiry}'
+        if viewer_id != user.id:
+            cert_val = f'<a href="/ui/users/{user.id}/certificate/view?as_user={viewer_id}">Ver certificado de identidad</a>{expiry}'
+    else:
+        cert_val = "<span class='crypto-missing'>Certificado de identidad pendiente</span>"
 
     return f"""
     <div class="crypto-flow">
       <div class="crypto-row">
-        <span class="crypto-step-name">Otorgar identidad</span>
+        <span class="crypto-step-name">Archivo de acceso</span>
         <div class="crypto-step-body">
-          <div class="crypto-step-main">{_crypto_file_state(user, viewer_id)}</div>
-          <div class="crypto-step-meta">
-            <span>{escape(material['key_algorithm'])}</span>
-            <span>serial {escape(material['serial'] or 'pendiente')}</span>
-          </div>
+          <div class="crypto-step-main">{key_val} {verified_chip}</div>
         </div>
       </div>
       <div class="crypto-row">
-        <span class="crypto-step-name">Firmar certificado</span>
+        <span class="crypto-step-name">Certificado</span>
         <div class="crypto-step-body">
-          <div class="crypto-step-main">{signer_summary}</div>
-          <div class="crypto-step-meta">
-            <span>firma con {escape(material['signed_with'])}</span>
-            <span>verifica con {escape(material['signer_verified_with'])}</span>
-          </div>
-        </div>
-      </div>
-      <div class="crypto-row">
-        <span class="crypto-step-name">Entrar</span>
-        <div class="crypto-step-body">
-          <div class="crypto-step-main">{escape(material['login_artifact'])} {verified_chip}</div>
-          <div class="crypto-step-meta">
-            <span>ADMIN y COORDINADOR</span>
-          </div>
-        </div>
-      </div>
-      <div class="crypto-row">
-        <span class="crypto-step-name">Verificar</span>
-        <div class="crypto-step-body">
-          <div class="crypto-step-main">{verify_summary}</div>
-          <div class="crypto-step-meta">
-            <span>reto RSA-PSS-SHA256</span>
-          </div>
+          <div class="crypto-step-main">{cert_val}</div>
         </div>
       </div>
     </div>
     """
 
 
-def base_page(title: str, body: str, actor=None) -> str:
+def base_page(title: str, body: str, actor=None, portal_sections: list | None = None) -> str:
     # sidebar nav items — determined by who's logged in (optional)
     BUTTERFLY_SVG = """<svg width="32" height="28" viewBox="0 0 80 64" fill="none" xmlns="http://www.w3.org/2000/svg">
       <ellipse cx="20" cy="22" rx="19" ry="14" fill="#d1145a" transform="rotate(-20 20 22)"/>
@@ -408,6 +377,16 @@ def base_page(title: str, body: str, actor=None) -> str:
         f'</div>'
     ) if actor else ""
 
+    if portal_sections:
+        _sec_items = '<span class="sidebar-section-label">En esta p&aacute;gina</span>'
+        for href, label, icon_svg, onclick_js, is_active in portal_sections:
+            cls = "sidebar-link active" if is_active else "sidebar-link"
+            _onclick = f' onclick="{onclick_js}"' if onclick_js else ""
+            _sec_items += f'<a href="{href}" class="{cls}"{_onclick}>{icon_svg}{label}</a>'
+        _portal_sections_html = _sec_items
+    else:
+        _portal_sections_html = ""
+
     return f"""
     <!doctype html>
     <html lang="es">
@@ -426,9 +405,9 @@ def base_page(title: str, body: str, actor=None) -> str:
             --border-strong: #cfc4b5;
             --text: #1a2332;
             --muted: #6b7280;
-            --accent: #a64b2a;
-            --accent-dark: #8a3d22;
-            --accent-light: #fdf0eb;
+            --accent: #e06020;
+            --accent-dark: #bf4f10;
+            --accent-light: #fff3eb;
             --brand-pink: #d1145a;
             --brand-orange: #f06b35;
             --sidebar-bg: #1a2332;
@@ -532,7 +511,7 @@ def base_page(title: str, body: str, actor=None) -> str:
           .grid {{ display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }}
           label {{ display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 500; color: var(--text); }}
           input, select {{ font: inherit; font-size: 14px; padding: 9px 12px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); transition: border-color .15s, box-shadow .15s; outline: none; width: 100%; }}
-          input:focus, select:focus {{ border-color: var(--accent); box-shadow: 0 0 0 3px rgba(166,75,42,0.12); }}
+          input:focus, select:focus {{ border-color: var(--accent); box-shadow: 0 0 0 3px rgba(224,96,32,0.12); }}
           input[type="file"] {{ padding: 7px 10px; cursor: pointer; background: var(--surface-2); }}
           button {{ font: inherit; font-size: 13px; font-weight: 600; padding: 9px 18px; border-radius: var(--radius); border: none; cursor: pointer; transition: background .15s; }}
           .btn-primary, button[type="submit"] {{ background: var(--accent); color: #fff; }}
@@ -594,15 +573,7 @@ def base_page(title: str, body: str, actor=None) -> str:
               Portal de usuario
             </a>
             {_admin_nav}
-            <span class="sidebar-section-label">En esta p&aacute;gina</span>
-            <a href="#certificados" class="sidebar-link">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              Flujo criptogr&aacute;fico
-            </a>
-            <a href="#beneficiarios" class="sidebar-link">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-              Beneficiarios
-            </a>
+            {_portal_sections_html}
           </nav>
           <div class="sidebar-footer">
             <a href="/logout" class="sidebar-logout">
@@ -632,17 +603,17 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
     </svg>"""
     error_html = f"<div class='error'>{escape(error)}</div>" if error else ""
     login_hint = (
-        "Admin y Coordinador entran con <code>private_key.pem</code> + <code>certificate.pem</code>; "
-        "Operativo y Voluntario con usuario + contrase&ntilde;a."
+        "Administradores y Coordinadores inician sesi&oacute;n con archivos de acceso. "
+        "Operativos y Voluntarios con usuario y contrase&ntilde;a."
     )
     if not settings.seed_demo_data:
         login_hint = (
-            "Admin y Coordinador entran con <code>private_key.pem</code> + <code>certificate.pem</code>. "
-            "Si el administrador inicial a&uacute;n no emite su certificado, puede entrar temporalmente con su contrase&ntilde;a."
+            "Administradores y Coordinadores inician sesi&oacute;n con archivos de acceso. "
+            "Si el administrador inicial a&uacute;n no tiene credenciales, puede entrar temporalmente con su contrase&ntilde;a."
         )
-    password_hint = "Contrase&ntilde;a de la llave privada"
+    password_hint = "Contrase&ntilde;a de los archivos de acceso"
     if not settings.seed_demo_data:
-        password_hint = "Contrase&ntilde;a de la llave privada o clave inicial del administrador"
+        password_hint = "Contrase&ntilde;a de los archivos de acceso o clave inicial del administrador"
     credentials_panel = """
           <details style="margin-top:18px;">
             <summary>
@@ -650,9 +621,9 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
               Credenciales demo
             </summary>
             <div style="margin-top:10px;padding:12px 14px;background:#faf7f3;border:1px solid #e5ddd3;border-radius:8px;display:grid;gap:5px;font-size:12px;color:#6b7280;">
-              <span><code>admin / admin</code> &mdash; bypass sin certificado</span>
-              <span><code>admin@demo.local</code> + private_key.pem + certificate.pem + <code>admin</code></span>
-              <span><code>coord.legal@demo.local</code> + private_key.pem + certificate.pem + <code>demo1234</code></span>
+              <span><code>admin / admin</code> &mdash; acceso directo sin archivos</span>
+              <span><code>admin@demo.local</code> + archivo de acceso + certificado + <code>admin</code></span>
+              <span><code>coord.legal@demo.local</code> + archivo de acceso + certificado + <code>demo1234</code></span>
               <span><code>operativo / demo1234</code></span>
               <span><code>voluntario / demo1234</code></span>
             </div>
@@ -667,7 +638,7 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
             </summary>
             <div style="margin-top:10px;padding:12px 14px;background:#faf7f3;border:1px solid #e5ddd3;border-radius:8px;display:grid;gap:5px;font-size:12px;color:#6b7280;">
               <span>Define <code>BOOTSTRAP_ADMIN_EMAIL</code> y <code>BOOTSTRAP_ADMIN_PASSWORD</code> al desplegar.</span>
-              <span>Ese administrador puede entrar con contrase&ntilde;a en la etapa inicial, hasta emitir su <code>private_key.pem</code> y <code>certificate.pem</code>.</span>
+              <span>Ese administrador puede entrar con contrase&ntilde;a en la etapa inicial, hasta generar sus archivos de acceso.</span>
             </div>
           </details>
         """
@@ -699,10 +670,10 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
         label{{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:500;color:#1a2332}}
         .label-hint{{font-size:11px;color:#6b7280;font-weight:400;margin-top:-2px}}
         input,select{{font:inherit;font-size:14px;padding:9px 12px;border-radius:10px;border:1px solid #cfc4b5;background:#fff;color:#1a2332;outline:none;width:100%;transition:border-color .15s,box-shadow .15s}}
-        input:focus,select:focus{{border-color:#a64b2a;box-shadow:0 0 0 3px rgba(166,75,42,0.12)}}
+        input:focus,select:focus{{border-color:#e06020;box-shadow:0 0 0 3px rgba(224,96,32,0.12)}}
         input[type="file"]{{padding:7px 10px;cursor:pointer;background:#faf7f3}}
-        .btn{{font:inherit;font-size:14px;font-weight:600;padding:11px;border-radius:10px;border:none;cursor:pointer;transition:background .15s;width:100%;background:#a64b2a;color:#fff;margin-top:6px}}
-        .btn:hover{{background:#8a3d22}}
+        .btn{{font:inherit;font-size:14px;font-weight:600;padding:11px;border-radius:10px;border:none;cursor:pointer;transition:background .15s;width:100%;background:#e06020;color:#fff;margin-top:6px}}
+        .btn:hover{{background:#bf4f10}}
         .btn-ghost{{background:#faf7f3;color:#1a2332;border:1px solid #cfc4b5;margin-top:0}}
         .btn-ghost:hover{{background:#f0ebe4}}
         .divider{{border:none;border-top:1px solid #e5ddd3;margin:20px 0}}
@@ -722,7 +693,7 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
             {BUTTERFLY_SVG}
             <div class="brand-name">Casa Monarca</div>
             <div class="brand-sub">Ayuda Humanitaria al Migrante, A.B.P.</div>
-            <p class="brand-tagline">Sistema de gestión de identidades digitales y certificados X.509 para el equipo de Casa Monarca.</p>
+            <p class="brand-tagline">Sistema de gesti&oacute;n de identidades y accesos para el equipo de Casa Monarca.</p>
           </div>
           <p class="left-footer">&copy; 2026 Casa Monarca &mdash; Gestor de Identidades</p>
         </div>
@@ -740,12 +711,12 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
             <label>Correo o usuario
               <input name="identifier" placeholder="usuario@ejemplo.com" required autocomplete="username">
             </label>
-            <label>private_key.pem
-              <span class="label-hint">Solo para Admin y Coordinador</span>
+            <label>Archivo de acceso
+              <span class="label-hint">Solo para Administrador y Coordinador</span>
               <input name="private_key_file" type="file" accept=".pem,.key">
             </label>
-            <label>certificate.pem
-              <span class="label-hint">Certificado X.509 del usuario</span>
+            <label>Certificado de identidad
+              <span class="label-hint">Solo para Administrador y Coordinador</span>
               <input name="certificate_file" type="file" accept=".pem,.crt">
             </label>
             <label>Contrase&ntilde;a
@@ -811,9 +782,9 @@ def render_self_register_page(error: str | None = None) -> str:
         .stack{{display:flex;flex-direction:column;gap:14px;margin-top:20px}}
         label{{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:500;color:#1a2332}}
         input{{font:inherit;font-size:14px;padding:9px 12px;border-radius:10px;border:1px solid #cfc4b5;background:#fff;color:#1a2332;outline:none;width:100%;transition:border-color .15s,box-shadow .15s}}
-        input:focus{{border-color:#a64b2a;box-shadow:0 0 0 3px rgba(166,75,42,0.12)}}
-        .btn{{font:inherit;font-size:14px;font-weight:600;padding:11px;border-radius:10px;border:none;cursor:pointer;background:#a64b2a;color:#fff;width:100%;margin-top:6px}}
-        .btn:hover{{background:#8a3d22}}
+        input:focus{{border-color:#e06020;box-shadow:0 0 0 3px rgba(224,96,32,0.12)}}
+        .btn{{font:inherit;font-size:14px;font-weight:600;padding:11px;border-radius:10px;border:none;cursor:pointer;background:#e06020;color:#fff;width:100%;margin-top:6px}}
+        .btn:hover{{background:#bf4f10}}
         .ok{{background:#dcfce7;border:1px solid #86efac;color:#166534;border-radius:10px;padding:10px 14px;font-size:13px;margin-top:14px}}
         .error{{background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:10px 14px;font-size:13px;margin-top:14px}}
         hr{{border:none;border-top:1px solid #e5ddd3;margin:20px 0}}
@@ -874,7 +845,7 @@ def render_admin_register_page(actor, roles, error: str | None = None) -> str:
       <div class="card" style="padding:32px;">
         <div style="margin-bottom:24px;">
           <h1 style="margin-bottom:6px;">Otorgar registro</h1>
-          <p class="muted">Crea la cuenta en estado <code>pending</code>. ADMIN y COORDINADOR reciben <code>private_key.pem</code> como entrega &uacute;nica, m&aacute;s <code>public_key.pem</code> y <code>certificate.pem</code>. OPERATIVO y VOLUNTARIO usan solo contrase&ntilde;a.</p>
+          <p class="muted">Crea la cuenta en estado <code>pending</code>. Administradores y Coordinadores reciben archivos de acceso de entrega &uacute;nica. Operativos y Voluntarios solo necesitan contrase&ntilde;a.</p>
         </div>
         {error_html}
         <form method="post" action="/admin/register" class="stack">
@@ -889,7 +860,7 @@ def render_admin_register_page(actor, roles, error: str | None = None) -> str:
           </div>
           <label>
             Contrase&ntilde;a inicial
-            <span class="muted" style="font-weight:400;font-size:12px;margin-top:-2px;">Clave del material criptogr&aacute;fico para roles criptogr&aacute;ficos</span>
+            <span class="muted" style="font-weight:400;font-size:12px;margin-top:-2px;">Para roles con archivos de acceso, esta clave los protege al descargarlos</span>
             <input name="credential_secret" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" required>
           </label>
           <button type="submit" style="padding:10px;font-size:14px;margin-top:8px;">Crear usuario</button>
@@ -900,6 +871,29 @@ def render_admin_register_page(actor, roles, error: str | None = None) -> str:
     return base_page("Otorgar registro · Casa Monarca", body)
 
 
+_USER_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'
+_SHIELD_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>'
+_PEOPLE_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
+
+
+def _build_portal_sections(actor, section: str = "cuenta") -> list:
+    if not actor:
+        return []
+    aid = actor.id
+    sections = [
+        (f"/portal?section=cuenta&as_user={aid}", "Mi cuenta", _USER_ICON_SVG, None, section == "cuenta"),
+    ]
+    if role_requires_crypto(actor):
+        sections.append((
+            f"/portal?section=credenciales&as_user={aid}", "Mis credenciales", _SHIELD_ICON_SVG, None, section == "credenciales",
+        ))
+    if actor.status == "active":
+        sections.append((
+            f"/portal?section=beneficiarios&as_user={aid}", "Beneficiarios", _PEOPLE_ICON_SVG, None, section == "beneficiarios",
+        ))
+    return sections
+
+
 def render_portal_page(
     actor,
     permissions,
@@ -908,10 +902,11 @@ def render_portal_page(
     verified: bool = False,
     beneficiarios=None,
     issuer_name: str | None = None,
+    section: str = "cuenta",
 ) -> str:
     permission_text = ", ".join(f"{item['resource']}:{item['action']}" for item in permissions) or "sin permisos"
     verified_html = (
-        "<p style='font-size:12px;color:var(--ok);font-weight:600;margin-bottom:10px;'>Sesion actual verificada con private_key.pem y certificate.pem.</p>"
+        "<p style='font-size:12px;color:var(--ok);font-weight:600;margin-bottom:10px;'>Identidad verificada con archivos de acceso.</p>"
         if verified
         else ""
     )
@@ -924,7 +919,7 @@ def render_portal_page(
         cert_section = f"""
         <div style="margin-top:18px;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
-            <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">Flujo criptogr&aacute;fico</p>
+            <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">Estado de credenciales</p>
             <span class="status {badge_class}">{badge_text}</span>
           </div>
           {_render_crypto_flow(actor, actor.id, issuer_name=issuer_name, verified=verified)}
@@ -1250,19 +1245,27 @@ def render_portal_page(
     else:
         role_content = "<div class='error' style='margin-top:16px;'>Rol no reconocido para esta demo.</div>"
 
-    body = f"""
-    <div class="card" style="padding:28px;margin-bottom:20px;">
-      <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--border);">
-        <h1 style="margin-bottom:4px;">Portal de usuario</h1>
-        <p class="muted" style="font-size:13px;">Bienvenido/a, <strong style="color:var(--text);">{escape(actor.full_name)}</strong> &mdash; {escape(actor.role.name)}</p>
-      </div>
-      {verified_html}
-      {render_notice(notice)}
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-top:18px;">
+    _STATUS_LABELS = {"active": "Activo", "pending": "Pendiente", "revoked": "Revocado", "expired": "Expirado"}
+    _STATUS_CSS = {"active": "active", "pending": "pending", "revoked": "revoked", "expired": "expired"}
+
+    # --- Section: Mi cuenta ---
+    _cuenta_content = f"""
+    <section style="margin-bottom:20px;">
+      <h1 style="font-size:20px;font-weight:700;letter-spacing:-0.3px;margin-bottom:4px;">Mi cuenta</h1>
+      <p class="muted" style="font-size:13px;">Bienvenido/a, <strong style="color:var(--text);">{escape(actor.full_name)}</strong></p>
+      <hr style="margin:16px 0;border-color:var(--border);">
+      {verified_html}{render_notice(notice)}
+    </section>
+    <div class="card" style="padding:28px;margin-bottom:16px;">
+      <h2 style="margin-bottom:16px;">Informaci&oacute;n personal</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:20px;">
         <div style="padding:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;">
-          <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;">Usuario</p>
+          <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;">Nombre completo</p>
           <p style="font-weight:600;font-size:14px;">{escape(actor.full_name)}</p>
-          <p style="font-size:12px;color:var(--muted);">{escape(actor.email)}</p>
+        </div>
+        <div style="padding:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;">
+          <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;">Correo electr&oacute;nico</p>
+          <p style="font-size:13px;word-break:break-all;">{escape(actor.email)}</p>
         </div>
         <div style="padding:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;">
           <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;">Rol</p>
@@ -1270,17 +1273,69 @@ def render_portal_page(
         </div>
         <div style="padding:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;">
           <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;">Estado</p>
-          <span class="status status-{escape(actor.status)}">{escape(actor.status)}</span>
+          <span class="status status-{_STATUS_CSS.get(actor.status, 'pending')}">{_STATUS_LABELS.get(actor.status, actor.status)}</span>
         </div>
       </div>
-      <div style="margin-top:14px;padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;">
-        <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:5px;">Permisos efectivos</p>
-        <p style="font-size:12px;font-family:'Courier New',monospace;word-break:break-word;color:var(--text);">{escape(permission_text)}</p>
-      </div>
-      <div id="certificados">{cert_section}</div>
+      {role_content}
     </div>
-    {role_content}
-    <div id="beneficiarios">{demo_section}</div>
+    <div class="card" style="padding:28px;">
+      <h2 style="margin-bottom:8px;">&iquest;Necesitas recuperar el acceso?</h2>
+      <p class="muted" style="font-size:13px;margin-bottom:16px;">Si olvidaste tu contrase&ntilde;a o perdiste tus archivos de acceso, puedes notificar al administrador. Deber&aacute;s verificar tu identidad en persona para recibir nuevas credenciales.</p>
+      <form method="post" action="/portal/request-password-reset">
+        <button type="submit" class="btn-ghost">Enviar solicitud al administrador</button>
+      </form>
+    </div>
+    """
+
+    # --- Section: Mis credenciales ---
+    if role_requires_crypto(actor):
+        _credenciales_content = f"""
+    <section style="margin-bottom:20px;">
+      <h1 style="font-size:20px;font-weight:700;letter-spacing:-0.3px;margin-bottom:4px;">Mis credenciales</h1>
+      <p class="muted" style="font-size:13px;">Archivos de acceso y certificado de identidad</p>
+      <hr style="margin:16px 0;border-color:var(--border);">
+      {render_notice(notice)}
+    </section>
+    <div class="card" style="padding:28px;">{cert_section}</div>
+    """
+    else:
+        _credenciales_content = f"""
+    <section style="margin-bottom:20px;">
+      <h1 style="font-size:20px;font-weight:700;letter-spacing:-0.3px;margin-bottom:4px;">Mis credenciales</h1>
+      <hr style="margin:16px 0;border-color:var(--border);">
+      {render_notice(notice)}
+    </section>
+    <div class="card" style="padding:28px;"><p class="muted">Tu rol utiliza acceso con usuario y contrase&ntilde;a. No tienes archivos de acceso asignados.</p></div>
+    """
+
+    # --- Section: Beneficiarios ---
+    if actor.status == "active":
+        _beneficiarios_content = f"""
+    <section style="margin-bottom:20px;">
+      <h1 style="font-size:20px;font-weight:700;letter-spacing:-0.3px;margin-bottom:4px;">Beneficiarios</h1>
+      <p class="muted" style="font-size:13px;">Gesti&oacute;n de registros de beneficiarios</p>
+      <hr style="margin:16px 0;border-color:var(--border);">
+      {render_notice(notice)}
+    </section>
+    {demo_section}
+    """
+    else:
+        _beneficiarios_content = f"""
+    <section style="margin-bottom:20px;">
+      <h1 style="font-size:20px;font-weight:700;letter-spacing:-0.3px;">Beneficiarios</h1>
+      <hr style="margin:16px 0;border-color:var(--border);">
+    </section>
+    <div class='error'>Tu cuenta est&aacute; en estado <strong>{escape(actor.status)}</strong>. Contacta a un administrador para restablecer el acceso.</div>
+    """
+
+    _section_map = {
+        "cuenta": _cuenta_content,
+        "credenciales": _credenciales_content,
+        "beneficiarios": _beneficiarios_content,
+    }
+
+    body = f"""
+    {_section_map.get(section, _cuenta_content)}
     <script>
     function showTab(btn, tabId) {{
       document.querySelectorAll('.coord-tab').forEach(function(b) {{
@@ -1294,7 +1349,7 @@ def render_portal_page(
     }}
     </script>
     """
-    return base_page("Portal \u00b7 Casa Monarca", body, actor=actor)
+    return base_page("Portal \u00b7 Casa Monarca", body, actor=actor, portal_sections=_build_portal_sections(actor, section))
 
 
 def _render_beneficiarios_admin(actor, bens: list) -> str:
@@ -1338,7 +1393,7 @@ def _render_beneficiarios_admin(actor, bens: list) -> str:
     )
 
     return f"""
-    <details class="collapsible-panel">
+    <details class="collapsible-panel" id="beneficiarios">
       <summary><h2>Beneficiarios</h2><span class="summary-button">Abrir</span></summary>
       <div class="panel-body" style="padding:16px 20px 24px;">
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px;">
@@ -1395,7 +1450,7 @@ def _render_beneficiarios_admin(actor, bens: list) -> str:
     """
 
 
-def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certificate_history, notice: str | None = None, beneficiarios=None, notifications=None) -> str:
+def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certificate_history, notice: str | None = None, beneficiarios=None, notifications=None, section: str = "usuarios") -> str:
     permission_text = ", ".join(f"{item['resource']}:{item['action']}" for item in permissions) or "sin permisos"
     actor_options = "".join(
         f"<option value='{user.id}'>{escape(user.full_name)} ({escape(user.role.name)})</option>"
@@ -1430,13 +1485,13 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
             if user_uses_crypto:
                 secret_field = f"""
                 <div>
-                  <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">
-                    Clave del nuevo material criptografico
+              <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">
+                    Contrase&ntilde;a para proteger los archivos de acceso
                   </label>
-                  <input type="password" name="new_secret" placeholder="Escribe una contrase&ntilde;a para proteger private_key.pem"
+                  <input type="password" name="new_secret" placeholder="Contrase&ntilde;a de protecci&oacute;n"
                     style="width:100%;" {'required' if needs_new_secret else ''}>
                   <p style="font-size:11px;color:var(--muted);margin-top:4px;">
-                    Se generar&aacute;n private_key.pem, public_key.pem y certificate.pem para el acceso.
+                    Se generar&aacute;n archivos de acceso y certificado de identidad para este usuario.
                   </p>
                 </div>
                 """
@@ -1481,8 +1536,8 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
                 # Display it as read-only info; editing is not allowed.
                 expiration_form = f"""
                 <div style="font-size:12px;color:var(--muted);padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;">
-                  <p style="font-weight:600;margin-bottom:3px;">Sellada criptogr&aacute;ficamente</p>
-                  <p>La vigencia de este usuario est&aacute; fijada en su certificado X.509 y no puede modificarse. Para extender el acceso, revocar la cuenta y re-emitir un nuevo certificado desde la secci&oacute;n <strong>Credencial</strong>.</p>
+                  <p style="font-weight:600;margin-bottom:3px;">Fecha sellada en el certificado</p>
+                  <p>La vigencia de este usuario est&aacute; fijada en su certificado de identidad y no puede modificarse directamente. Para extender el acceso, revocar la cuenta y generar nuevas credenciales desde la secci&oacute;n <strong>Credenciales</strong>.</p>
                 </div>
                 """
             else:
@@ -1503,19 +1558,19 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
               <select name="role_id">
                 {''.join(f"<option value='{role.id}' {'selected' if role.id == user.role_id else ''}>{escape(role.name)}</option>" for role in roles)}
               </select>
-              <input type="password" name="new_secret" placeholder="Clave del material criptografico si cambias a rol criptografico" required>
+              <input type="password" name="new_secret" placeholder="Contrase&ntilde;a para los archivos de acceso si cambias a este rol" required>
               <button type="submit">Guardar rol</button>
             </form>
             """
 
         account_note = "Acceso vigente"
         if user.login_locked_until:
-            account_note = "Cuenta bloqueada por exceso de intentos de login fallidos."
+            account_note = "Acceso bloqueado por demasiados intentos fallidos de inicio de sesi&oacute;n."
         elif user.status == "revoked":
             account_note = (
-                "La revocacion bloquea de inmediato el acceso. En roles criptograficos se recomienda reemitir private_key.pem y certificate.pem al reactivar."
+                "El acceso fue bloqueado de inmediato. Al reactivar, se recomienda generar nuevas credenciales."
                 if user_uses_crypto
-                else "La revocacion borra la contrasena almacenada y obliga a definir una nueva para reactivar."
+                else "La revocaci&oacute;n borra la contrase&ntilde;a almacenada y obliga a definir una nueva para reactivar."
             )
         elif user.status == "pending":
             account_note = "La cuenta existe pero todavia no puede entrar."
@@ -1531,20 +1586,20 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
                 issuer_name=user_name_lookup.get(user.certificate_issuer_user_id),
             )
             if not user.certificate_serial or missing_explicit_artifacts:
-                action_label = "Emitir artefactos" if not user.certificate_serial else "Reemitir artefactos"
+                action_label = "Generar credenciales" if not user.certificate_serial else "Renovar credenciales"
                 certificate_section += f"""
                 <form method="post" action="/ui/users/{user.id}/certificate" class="inline-form" style="margin-top:10px;">
-                  <input type="password" name="credential_secret" placeholder="Contrase&ntilde;a de private_key.pem" required>
+                  <input type="password" name="credential_secret" placeholder="Contrase&ntilde;a de protecci&oacute;n" required>
                   <button type="submit">{action_label}</button>
                 </form>
                 """
             else:
                 certificate_section += """
-                <p class="muted" style="margin-top:8px;">Artefactos listos para entrega y autenticacion.</p>
+                <p class="muted" style="margin-top:8px;">Credenciales listas para entregar al usuario.</p>
                 """
 
         summary_expiration = expiration_text
-        row_hint = "private.pem + cert.pem" if user_uses_crypto else "usuario + contrasena"
+        row_hint = "Acceso con archivos" if user_uses_crypto else "Acceso con contrase&ntilde;a"
 
         user_rows.append(
             f"""
@@ -1577,7 +1632,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
                   {role_form}
                 </section>
                 <section class="control-panel">
-                  <h4>{'Flujo criptografico' if user_uses_crypto else 'Credencial'}</h4>
+                  <h4>{'Credenciales' if user_uses_crypto else 'Acceso'}</h4>
                   {certificate_section}
                 </section>
               </div>
@@ -1588,7 +1643,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
     create_form = ""
     if can_create:
         create_form = f"""
-        <details class="collapsible-panel">
+          <details class="collapsible-panel" id="alta">
           <summary><h2>Alta de usuario</h2><span class="summary-button">Abrir</span></summary>
           <form method="post" action="/ui/users" class="panel-body" style="padding:16px 20px 20px;">
 
@@ -1602,7 +1657,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
             </div>
             <label>
               Contrase&ntilde;a inicial
-              <span class="muted" style="font-weight:400;font-size:12px;margin-top:-2px;">Clave del material criptogr&aacute;fico para roles criptogr&aacute;ficos</span>
+              <span class="muted" style="font-weight:400;font-size:12px;margin-top:-2px;">Para roles con archivos de acceso, esta clave los protege al descargarlos</span>
               <input name="credential_secret" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" required>
             </label>
             <div><button type="submit" style="margin-top:4px;">Crear usuario</button></div>
@@ -1690,6 +1745,215 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
     </details>
     """
 
+    # ── Section content builder ─────────────────────────────────────────────
+    _base_url = f"/dashboard?as_user={actor.id}&section="
+
+    def _sec_hdr(title, subtitle="", extra_btn=""):
+        sub_p = f'<p style="color:var(--muted);font-size:13px;">{subtitle}</p>' if subtitle else ""
+        return f"""
+        <section class="hero">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;">
+            <div><h1 style="margin-bottom:4px;">{title}</h1>{sub_p}</div>
+            {extra_btn}
+          </div>
+          <hr style="border:none;border-top:1px solid var(--border);margin:18px 0 14px;">
+          {render_notice(notice)}
+        </section>"""
+
+    _new_user_btn = f'<a href="/admin/register?as_user={actor.id}" style="display:inline-block;background:var(--accent);color:#fff;padding:8px 16px;border-radius:var(--radius);font-size:13px;font-weight:600;text-decoration:none;">+ Nuevo usuario</a>'
+
+    # ── USUARIOS section ────────────────────────────────────────────────────
+    _usuarios_content = f"""
+    {_sec_hdr("Gestión de usuarios", "Casa Monarca — Control de identidades y accesos del equipo operativo", _new_user_btn)}
+    <div class="grid">
+      <div class="stat-card">
+        <div class="stat-number">{len(users)}</div>
+        <div class="stat-label">Usuarios totales</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">{len(roles)}</div>
+        <div class="stat-label">Roles definidos</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">{len(logs)}</div>
+        <div class="stat-label">Eventos de auditor&iacute;a</div>
+      </div>
+      <div class="panel">
+        <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;">Ver portal como</p>
+        <form method="get" action="/portal" style="display:flex;gap:8px;">
+          <select name="as_user" style="flex:1;">{actor_options}</select>
+          <button type="submit" style="white-space:nowrap;padding:8px 14px;font-size:13px;">Abrir</button>
+        </form>
+      </div>
+    </div>
+    <div class="card" id="usuarios" style="overflow:hidden;">
+      <div class="filter-bar">
+        <div style="position:relative;">
+          <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--muted);" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="filter-search" type="search" placeholder="Buscar por nombre o correo..." oninput="filterUsers()" style="padding-left:32px;">
+        </div>
+        <select id="filter-role" onchange="filterUsers()" style="width:auto;min-width:160px;">
+          <option value="">Todos los roles</option>
+          {role_filter_options}
+        </select>
+        <select id="filter-status" onchange="filterUsers()" style="width:auto;min-width:150px;">
+          <option value="">Todos los estados</option>
+          <option value="active">Activo</option>
+          <option value="pending">Pendiente</option>
+          <option value="revoked">Revocado</option>
+          <option value="expired">Expirado</option>
+        </select>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px 8px;">
+        <h2>Usuarios</h2>
+        <span id="filter-count" class="muted" style="font-size:12px;"></span>
+      </div>
+      <div class="users-list" style="padding:0 12px 16px 12px;">
+        <div id="no-results" style="display:none;text-align:center;padding:32px 20px;color:var(--muted);"><p>No se encontraron usuarios con esos filtros.</p></div>
+        {''.join(user_rows)}
+      </div>
+    </div>
+    """
+
+    # ── ALTA section ────────────────────────────────────────────────────────
+    _alta_form_body = ""
+    if can_create:
+        _alta_form_body = f"""
+        <div class="card" style="padding:24px;">
+          <form method="post" action="/ui/users" style="display:flex;flex-direction:column;gap:12px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <label>Nombre completo<input name="full_name" placeholder="Nombre Apellido" required></label>
+              <label>Correo electr&oacute;nico<input name="email" type="email" placeholder="correo@ejemplo.com" required></label>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <label>Rol<select name="role_id">{create_role_options}</select></label>
+              <label>Fecha de expiraci&oacute;n<input name="end_date" type="datetime-local"></label>
+            </div>
+            <label>
+              Contrase&ntilde;a inicial
+              <span class="muted" style="font-weight:400;font-size:12px;margin-top:-2px;">Para roles con archivos de acceso, esta clave los protege al descargarlos</span>
+              <input name="credential_secret" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" required>
+            </label>
+            <div><button type="submit" style="margin-top:4px;">Crear usuario</button></div>
+          </form>
+        </div>"""
+    else:
+        _alta_form_body = "<div class='error'>No tienes permiso para crear usuarios.</div>"
+
+    _alta_content = f"""
+    {_sec_hdr("Alta de usuario", "Crea un nuevo usuario en el sistema.")}
+    {_alta_form_body}
+    """
+
+    # ── AUDITORÍA section ───────────────────────────────────────────────────
+    _auditoria_content = f"""
+    {_sec_hdr("Auditor&iacute;a", f"{len(logs)} eventos registrados")}
+    <div class="card" style="padding:20px 24px;">
+      <ul style="font-size:13px;">{log_items}</ul>
+    </div>
+    """
+
+    # ── NOTIFICACIONES section ──────────────────────────────────────────────
+    _notif_badge_text = f"{unread_count} sin atender" if unread_count else "Sin notificaciones pendientes"
+    _notif_content = f"""
+    {_sec_hdr("Notificaciones", _notif_badge_text)}
+    <div class="card" style="padding:10px 24px 24px;">
+      {notif_rows}
+    </div>
+    """
+
+    # ── BENEFICIARIOS section ───────────────────────────────────────────────
+    _bens = beneficiarios or []
+    _bens_activos = len([b for b in _bens if b.status == "activo"])
+    _bens_revision = len([b for b in _bens if b.status == "en_revision"])
+    _bens_nuevos = len([b for b in _bens if b.status == "nuevo"])
+    STATUS_LABELS_B = {"nuevo": "Nuevo", "en_revision": "En revisión", "canalizado": "Canalizado", "activo": "Activo"}
+    STATUS_CSS_B = {"nuevo": "pending", "en_revision": "pending", "canalizado": "active", "activo": "active"}
+    AREA_LABELS_B = {"ADMINISTRACION": "Administración", "LEGAL": "Legal", "PSICOSOCIAL": "Psicosocial", "HUMANITARIO": "Humanitario", "COMUNICACION": "Comunicación"}
+    STATUS_OPTIONS_B = [("nuevo","Nuevo"),("en_revision","En revisión"),("canalizado","Canalizado"),("activo","Activo")]
+    def _opts_b(cur):
+        return "".join(f'<option value="{v}"{" selected" if v == cur else ""}>{lbl}</option>' for v,lbl in STATUS_OPTIONS_B)
+    _bens_rows = "".join(
+        f"""<div style="display:flex;align-items:center;gap:12px;padding:11px 14px;background:#fff;border-bottom:1px solid #e5ddd3;flex-wrap:wrap;">
+          <div style="flex:1;min-width:160px;">
+            <p style="font-weight:600;font-size:13px;color:#1a2332;">{escape(b.nombre_completo)}</p>
+            <p style="font-size:12px;color:#6b7280;">{escape(b.pais_origen)} &middot; {b.fecha_ingreso.strftime('%d/%m/%Y')} &middot; {escape(AREA_LABELS_B.get(b.area, b.area))}</p>
+            {f'<p style="font-size:11px;color:#6b7280;margin-top:3px;font-style:italic;">{escape(b.notas[:80])}</p>' if b.notas else ''}
+          </div>
+          <span class="status status-{STATUS_CSS_B[b.status]}">{STATUS_LABELS_B[b.status]}</span>
+          <form method="post" action="/ui/beneficiarios/{b.id}/status" style="display:flex;gap:6px;align-items:center;">
+            <select name="new_status" style="font-size:12px;padding:4px 8px;border-radius:7px;border:1px solid #cfc4b5;background:#fff;color:#1a2332;">{_opts_b(b.status)}</select>
+            <button type="submit" style="background:var(--accent);color:#fff;padding:5px 10px;font-size:12px;border-radius:7px;cursor:pointer;border:none;">Guardar</button>
+          </form>
+          <form method="post" action="/ui/beneficiarios/{b.id}/delete" style="margin:0;">
+            <button type="submit" onclick="return confirm('\u00bfEliminar este registro?')" style="background:none;border:1px solid #fca5a5;color:#dc2626;padding:5px 10px;border-radius:7px;font-size:12px;cursor:pointer;font-weight:500;">Eliminar</button>
+          </form>
+        </div>"""
+        for b in _bens
+    )
+    _beneficiarios_content = f"""
+    {_sec_hdr("Beneficiarios", f"{len(_bens)} registros &mdash; {_bens_activos} activos")}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:18px;">
+      <div style="padding:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;"><p style="font-size:24px;font-weight:700;color:#166534;line-height:1;">{_bens_activos}</p><p style="font-size:11px;font-weight:600;color:#166534;margin-top:4px;">Activos</p></div>
+      <div style="padding:14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:10px;"><p style="font-size:24px;font-weight:700;color:#1d4ed8;line-height:1;">{len(_bens)}</p><p style="font-size:11px;font-weight:600;color:#1d4ed8;margin-top:4px;">Total</p></div>
+      <div style="padding:14px;background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;"><p style="font-size:24px;font-weight:700;color:#92400e;line-height:1;">{_bens_revision}</p><p style="font-size:11px;font-weight:600;color:#92400e;margin-top:4px;">En revisi&oacute;n</p></div>
+      <div style="padding:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;"><p style="font-size:24px;font-weight:700;color:#166534;line-height:1;">{_bens_nuevos}</p><p style="font-size:11px;font-weight:600;color:#166534;margin-top:4px;">Nuevos</p></div>
+    </div>
+    <details style="margin-bottom:18px;border:1px solid #e5ddd3;border-radius:10px;padding:14px 16px;background:#fff;">
+      <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#1a2332;list-style:none;">+ Registrar nuevo beneficiario</summary>
+      <form method="post" action="/ui/beneficiarios" style="margin-top:14px;display:flex;flex-direction:column;gap:12px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <label style="display:flex;flex-direction:column;gap:4px;">Nombre completo<input name="nombre_completo" placeholder="Apellido Apellido, Nombre" required style="margin-top:0;"></label>
+          <label style="display:flex;flex-direction:column;gap:4px;">Pa&iacute;s de origen<input name="pais_origen" placeholder="Honduras, Guatemala..." required style="margin-top:0;"></label>
+          <label style="display:flex;flex-direction:column;gap:4px;">&Aacute;rea
+            <select name="area" required style="margin-top:0;"><option value="">-- Selecciona --</option><option value="PSICOSOCIAL">Psicosocial</option><option value="LEGAL">Legal</option><option value="HUMANITARIO">Humanitario</option><option value="ADMINISTRACION">Administraci&oacute;n</option><option value="COMUNICACION">Comunicaci&oacute;n</option></select>
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;">Notas (opcional)<input name="notas" placeholder="Situaci&oacute;n general..." style="margin-top:0;"></label>
+        </div>
+        <button type="submit" style="background:var(--accent);color:#fff;padding:9px 20px;border-radius:8px;font-size:13px;font-weight:600;border:none;cursor:pointer;align-self:flex-start;">Registrar</button>
+      </form>
+    </details>
+    <div class="card" style="overflow:hidden;">
+      {_bens_rows or '<p style="padding:14px;font-size:13px;color:#6b7280;">Sin registros a&uacute;n.</p>'}
+    </div>
+    """
+
+    # ── HISTORIAL section ───────────────────────────────────────────────────
+    _backup_card = f"""
+    <div class="card" style="padding:24px;margin-top:16px;">
+      <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:12px;">Recuperaci&oacute;n de administrador</p>
+      {backup_section}
+    </div>"""
+    _historial_content = f"""
+    {_sec_hdr("Historial de credenciales")}
+    <div class="card" style="padding:20px 24px;">
+      <p class="muted" style="margin-bottom:12px;">Los administradores validan la identidad de coordinadores. Administradores y Coordinadores usan archivos de acceso para entrar.</p>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
+        <a href="/ui/ca/certificate/view?as_user={actor.id}">Ver certificado del administrador</a>
+        <a href="/ui/ca/certificate?as_user={actor.id}">Descargar certificado (.pem)</a>
+      </div>
+      <ul style="font-size:13px;">{certificate_rows}</ul>
+    </div>
+    {_backup_card}
+    """
+
+    # ── Section selector ────────────────────────────────────────────────────
+    _section_map = {
+        "usuarios": _usuarios_content,
+        "alta": _alta_content,
+        "auditoria": _auditoria_content,
+        "notificaciones": _notif_content,
+        "beneficiarios": _beneficiarios_content,
+        "historial": _historial_content,
+    }
+    section_main = _section_map.get(section, _usuarios_content)
+
+    # ── Active section helper ───────────────────────────────────────────────
+    def _slink(sec, label, icon_svg):
+        cls = "sidebar-link active" if section == sec else "sidebar-link"
+        href = f"/dashboard?as_user={actor.id}&section={sec}"
+        return f'<a href="{href}" class="{cls}">{icon_svg}{label}</a>'
+
     return f"""
     <!doctype html>
     <html lang="es">
@@ -1708,9 +1972,9 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
             --border-strong: #cfc4b5;
             --text: #1a2332;
             --muted: #6b7280;
-            --accent: #a64b2a;
-            --accent-dark: #8a3d22;
-            --accent-light: #fdf0eb;
+            --accent: #e06020;
+            --accent-dark: #bf4f10;
+            --accent-light: #fff3eb;
             --ok: #166534;
             --ok-bg: #dcfce7;
             --ok-border: #86efac;
@@ -1761,7 +2025,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
           .stack {{ display: flex; flex-direction: column; gap: 10px; }}
           label {{ display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 500; }}
           input, select {{ font: inherit; font-size: 14px; padding: 8px 11px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); transition: border-color .15s, box-shadow .15s; outline: none; width: 100%; }}
-          input:focus, select:focus {{ border-color: var(--accent); box-shadow: 0 0 0 3px rgba(166,75,42,0.12); }}
+          input:focus, select:focus {{ border-color: var(--accent); box-shadow: 0 0 0 3px rgba(224,96,32,0.12); }}
           input[type="file"] {{ padding: 6px 10px; cursor: pointer; background: var(--surface-2); }}
           button {{ font: inherit; font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: var(--radius); border: none; cursor: pointer; transition: background .15s; background: var(--accent); color: #fff; }}
           button:hover {{ background: var(--accent-dark); }}
@@ -1848,19 +2112,13 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
               Panel de administraci&oacute;n
             </a>
-            <a href="#notifications" class="sidebar-link" onclick="var el=document.getElementById('notifications');if(el){{el.setAttribute('open','');el.scrollIntoView({{behavior:'smooth',block:'start'}});}};return false;">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-              Notificaciones{"&nbsp;<span style='background:#dc2626;color:#fff;border-radius:999px;padding:0 6px;font-size:10px;font-weight:700;vertical-align:middle;'>"+str(unread_count)+"</span>" if unread_count else ""}
-            </a>
-            <span class="sidebar-section-label">Accesos r&aacute;pidos</span>
-            <a href="/admin/register?as_user={actor.id}" class="sidebar-link">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
-              Nuevo usuario
-            </a>
-            <a href="/ui/ca/certificate/view?as_user={actor.id}" class="sidebar-link">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              Certificado firmante
-            </a>
+            <span class="sidebar-section-label">Secciones</span>
+            {_slink("usuarios", "Usuarios", '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>')}
+            {_slink("alta", "Alta de usuario", '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>')}
+            {_slink("auditoria", "Auditor&iacute;a", '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>')}
+            {_slink("notificaciones", "Notificaciones" + ("&nbsp;<span style='background:#dc2626;color:#fff;border-radius:999px;padding:0 6px;font-size:10px;font-weight:700;vertical-align:middle;'>"+str(unread_count)+"</span>" if unread_count else ""), '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>')}
+            {_slink("beneficiarios", "Beneficiarios", '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>')}
+            {_slink("historial", "Historial", '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>')}
           </nav>
           <div class="sidebar-footer">
             <a href="/logout" class="sidebar-logout">
@@ -1871,107 +2129,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
         </aside>
         <div class="page-wrapper">
         <main>
-          <section class="hero">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;">
-              <div>
-                <h1 style="margin-bottom:4px;">Gestor de Identidades</h1>
-                <p style="color:var(--muted);font-size:13px;">Casa Monarca &mdash; Control de identidades, certificados X.509 y auditor&iacute;a operativa</p>
-              </div>
-              <a href="/admin/register?as_user={actor.id}" style="display:inline-block;background:var(--accent);color:#fff;padding:8px 16px;border-radius:var(--radius);font-size:13px;font-weight:600;">+ Nuevo usuario</a>
-            </div>
-            <hr style="border:none;border-top:1px solid var(--border);margin:18px 0;">
-            {render_notice(notice)}
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;">
-              <div>
-                <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;">Usuario actual</p>
-                <p style="font-weight:600;font-size:15px;">{escape(actor.full_name)}</p>
-                <p style="font-size:12px;color:var(--muted);margin-top:2px;">{escape(actor.email)}</p>
-                <span style="display:inline-block;margin-top:6px;background:var(--accent-light);color:var(--accent);border:1px solid #f0d4c5;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:600;">{escape(actor.role.name)}</span>
-              </div>
-              <div>
-                <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px;">Ver portal como</p>
-                <form method="get" action="/portal" style="display:flex;gap:8px;">
-                  <select name="as_user" style="flex:1;">{actor_options}</select>
-                  <button type="submit" style="white-space:nowrap;padding:8px 14px;font-size:13px;">Abrir</button>
-                </form>
-              </div>
-            </div>
-          </section>
-
-          <div class="grid">
-            <div class="stat-card">
-              <div class="stat-number">{len(users)}</div>
-              <div class="stat-label">Usuarios totales</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-number">{len(roles)}</div>
-              <div class="stat-label">Roles definidos</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-number">{len(logs)}</div>
-              <div class="stat-label">Eventos de auditor&iacute;a</div>
-            </div>
-            <details class="collapsible-panel">
-              <summary><h2>Recuperaci&oacute;n admin</h2><span class="summary-button">Abrir</span></summary>
-              <div class="panel-body">{backup_section}</div>
-            </details>
-          </div>
-
-          <details class="collapsible-panel">
-            <summary><h2>Certificados firmados e hist&oacute;rico</h2><span class="summary-button">Abrir</span></summary>
-            <div class="panel-body" style="padding:14px 20px 20px;">
-              <p class="muted">ADMIN -> firma coordinadores · COORDINADOR -> entra con <code>private_key.pem</code> + <code>certificate.pem</code>.</p>
-              <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;">
-                <a href="/ui/ca/certificate/view?as_user={actor.id}">Ver certificado del admin firmante</a>
-                <a href="/ui/ca/certificate?as_user={actor.id}">Descargar certificado del admin firmante (.pem)</a>
-              </div>
-              <ul style="margin-top:12px;font-size:13px;">{certificate_rows}</ul>
-            </div>
-          </details>
-
-          {create_form}
-
-          <div class="card" style="overflow:hidden;">
-            <div class="filter-bar">
-              <div style="position:relative;">
-                <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--muted);" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input id="filter-search" type="search" placeholder="Buscar por nombre o correo..." oninput="filterUsers()" style="padding-left:32px;">
-              </div>
-              <select id="filter-role" onchange="filterUsers()" style="width:auto;min-width:160px;">
-                <option value="">Todos los roles</option>
-                {role_filter_options}
-              </select>
-              <select id="filter-status" onchange="filterUsers()" style="width:auto;min-width:150px;">
-                <option value="">Todos los estados</option>
-                <option value="active">Activo</option>
-                <option value="pending">Pendiente</option>
-                <option value="revoked">Revocado</option>
-                <option value="expired">Expirado</option>
-              </select>
-            </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px 8px;">
-              <h2>Usuarios</h2>
-              <span id="filter-count" class="muted" style="font-size:12px;"></span>
-            </div>
-            <div class="users-list" style="padding:0 12px 16px 12px;">
-              <div id="no-results" style="display:none;text-align:center;padding:32px 20px;color:var(--muted);">
-                <p>No se encontraron usuarios con esos filtros.</p>
-              </div>
-              {''.join(user_rows)}
-            </div>
-          </div>
-
-          <details class="collapsible-panel">
-            <summary><h2>Auditor&iacute;a reciente</h2><span class="summary-button">Abrir</span></summary>
-            <div class="panel-body" style="padding:10px 20px 20px;">
-              <ul style="font-size:13px;">{log_items}</ul>
-            </div>
-          </details>
-
-          {notifications_section}
-
-          {_render_beneficiarios_admin(actor, beneficiarios or [])}
-
+          {section_main}
         </main>
         <script>
         var OPEN_KEY = 'cm_open_rows';
@@ -2123,7 +2281,7 @@ async def login(
             certificate_bytes = await certificate_file.read()
 
         if has_private_key != has_certificate:
-            raise ValueError("Debes adjuntar private_key.pem y certificate.pem juntos")
+            raise ValueError("Debes adjuntar el archivo de acceso y el certificado de identidad juntos")
 
         if private_key_bytes and certificate_bytes:
             user, proof = SignatureLoginService.authenticate_with_private_key_and_certificate(
@@ -2184,6 +2342,7 @@ async def login(
 
 @app.get("/portal", response_class=HTMLResponse)
 def user_portal(
+    section: str = Query(default="cuenta"),
     notice: str | None = Query(default=None),
     verified: bool = Query(default=False),
     db: Session = Depends(get_db),
@@ -2202,8 +2361,29 @@ def user_portal(
             verified=verified,
             beneficiarios=beneficiarios,
             issuer_name=issuer_user.full_name if issuer_user else None,
+            section=section,
         )
     )
+
+
+@app.post("/portal/request-password-reset")
+def portal_request_password_reset(
+    db: Session = Depends(get_db),
+    actor=Depends(_get_session_actor),
+):
+    NotificationService.create(
+        db,
+        type="recovery_request",
+        title=f"Solicitud de recuperaci\u00f3n: {actor.full_name}",
+        message=(
+            f"{actor.full_name} ({actor.email}) solicita recuperaci\u00f3n de acceso desde su portal. "
+            "Verificar identidad en persona antes de entregar nuevas credenciales."
+        ),
+        user_id=actor.id,
+        metadata={"email": actor.email, "user_id": actor.id},
+    )
+    resp = RedirectResponse(url=f"/portal?section=cuenta&notice=recovery-sent", status_code=303)
+    return _login_redirect(resp, actor.id)
 
 
 @app.post("/ui/beneficiarios", response_class=HTMLResponse)
@@ -2226,7 +2406,7 @@ def create_beneficiario(
         created_by_user_id=actor.id,
     )
     db.commit()
-    resp = RedirectResponse(url="/portal?notice=beneficiario-creado", status_code=303)
+    resp = RedirectResponse(url="/portal?section=beneficiarios&notice=beneficiario-creado", status_code=303)
     return _login_redirect(resp, actor.id)
 
 
@@ -2320,12 +2500,12 @@ def health():
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(
+    section: str = Query(default="usuarios"),
     notice: str | None = Query(default=None),
     db: Session = Depends(get_db),
     actor=Depends(_get_session_actor),
 ):
     if not is_active_admin(actor):
-        # Non-admins that somehow land on /dashboard get sent to portal
         resp = RedirectResponse(url="/portal", status_code=303)
         return _login_redirect(resp, actor.id)
 
@@ -2337,7 +2517,7 @@ def dashboard(
     certificate_history = UserService.list_certificate_history(db)
     NotificationService.check_expiring_certificates(db)
     notifications = NotificationService.list_all(db)
-    return HTMLResponse(render_dashboard(actor, users, roles, permissions, logs, backup_admin, certificate_history, notice, beneficiarios=BeneficiarioService.list_all(db), notifications=notifications))
+    return HTMLResponse(render_dashboard(actor, users, roles, permissions, logs, backup_admin, certificate_history, notice, beneficiarios=BeneficiarioService.list_all(db), notifications=notifications, section=section))
 
 
 @app.get("/api/me", response_model=MeOut)
@@ -2728,6 +2908,5 @@ def ui_mark_notification_read(
     if not is_active_admin(actor):
         raise HTTPException(status_code=403, detail="Solo administradores pueden gestionar notificaciones")
     NotificationService.mark_read(db, notification_id)
-    back_href = f"/dashboard?{urlencode({'notice': 'status-updated'})}"
-    resp = RedirectResponse(url=back_href, status_code=303)
-    return _login_redirect(resp, actor.id)
+    back_href = f"/dashboard?section=notificaciones&as_user={actor.id}"
+    return RedirectResponse(url=back_href, status_code=303)
