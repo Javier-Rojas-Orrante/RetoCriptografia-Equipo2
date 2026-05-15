@@ -1807,6 +1807,13 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
 
         summary_expiration = expiration_text
         row_hint = "Acceso con archivos" if user_uses_crypto else "Acceso con contrase&ntilde;a"
+        unlock_form = ""
+        if user.login_locked_until:
+            unlock_form = f"""
+            <form method="post" action="/ui/users/{user.id}/unlock" class="inline-form" style="margin-top:8px;">
+              <button type="submit" style="background:#d97706;">Desbloquear cuenta</button>
+            </form>
+            """
 
         user_rows.append(
             f"""
@@ -1828,7 +1835,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
                   <p class="muted">{escape(account_note)}</p>
                   {activation_form}
                   {revoke_form}
-                  {f"""<form method="post" action="/ui/users/{user.id}/unlock" class="inline-form" style="margin-top:8px;"><button type="submit" style="background:#d97706;">Desbloquear cuenta</button></form>""" if user.login_locked_until else ""}
+                  {unlock_form}
                 </section>
                 <section class="control-panel">
                   <h4>Vigencia</h4>
