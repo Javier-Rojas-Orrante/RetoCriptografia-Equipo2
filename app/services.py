@@ -562,7 +562,7 @@ class SchemaService:
         return json.dumps(parsed, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
     @staticmethod
-    def migrate_plaintext_rows() -> None:
+    def migrate_plaintext_rows(encrypt_payload: bool = True) -> None:
         inspector = inspect(engine)
         table_names = set(inspector.get_table_names())
         with engine.begin() as connection:
@@ -577,7 +577,7 @@ class SchemaService:
                     updates = {}
                     for column_name in ("nombre_completo", "pais_origen", "area", "status", "notas"):
                         value = row[column_name]
-                        if value is not None and not database_crypto.is_encrypted(value):
+                        if encrypt_payload and value is not None and not database_crypto.is_encrypted(value):
                             updates[column_name] = database_crypto.encrypt_text(str(value))
                     area_plain = database_crypto.decrypt_text(row["area"])
                     if area_plain:
@@ -605,7 +605,7 @@ class SchemaService:
                     updates = {}
                     for column_name in ("code", "name"):
                         value = row[column_name]
-                        if value is not None and not database_crypto.is_encrypted(value):
+                        if encrypt_payload and value is not None and not database_crypto.is_encrypted(value):
                             updates[column_name] = database_crypto.encrypt_text(str(value))
                     code_plain = database_crypto.decrypt_text(row["code"])
                     if code_plain:
@@ -646,7 +646,7 @@ class SchemaService:
                         "password_hash",
                     ):
                         value = row[column_name]
-                        if value is not None and not database_crypto.is_encrypted(value):
+                        if encrypt_payload and value is not None and not database_crypto.is_encrypted(value):
                             updates[column_name] = database_crypto.encrypt_text(str(value))
                     email_plain = database_crypto.decrypt_text(row["email"])
                     if email_plain:
@@ -697,7 +697,7 @@ class SchemaService:
                     updates = {}
                     for column_name in ("resource", "action"):
                         value = row[column_name]
-                        if value is not None and not database_crypto.is_encrypted(value):
+                        if encrypt_payload and value is not None and not database_crypto.is_encrypted(value):
                             updates[column_name] = database_crypto.encrypt_text(str(value))
                     if updates:
                         connection.execute(
@@ -718,10 +718,10 @@ class SchemaService:
                     updates = {}
                     for column_name in ("event_type", "action", "resource", "result", "ip_address", "user_agent"):
                         value = row[column_name]
-                        if value is not None and not database_crypto.is_encrypted(value):
+                        if encrypt_payload and value is not None and not database_crypto.is_encrypted(value):
                             updates[column_name] = database_crypto.encrypt_text(str(value))
                     metadata_value = row["metadata_json"]
-                    if metadata_value is not None and not database_crypto.is_encrypted(metadata_value):
+                    if encrypt_payload and metadata_value is not None and not database_crypto.is_encrypted(metadata_value):
                         updates["metadata_json"] = database_crypto.encrypt_text(SchemaService._json_plain_text(metadata_value))
                     if updates:
                         connection.execute(
@@ -754,7 +754,7 @@ class SchemaService:
                     updates = {}
                     for column_name in ("key", "value_text"):
                         value = row[column_name]
-                        if value is not None and not database_crypto.is_encrypted(value):
+                        if encrypt_payload and value is not None and not database_crypto.is_encrypted(value):
                             updates[column_name] = database_crypto.encrypt_text(str(value))
                     key_plain = database_crypto.decrypt_text(row["key"])
                     if key_plain:
@@ -784,10 +784,10 @@ class SchemaService:
                     updates = {}
                     for column_name in ("type", "title", "message"):
                         value = row[column_name]
-                        if value is not None and not database_crypto.is_encrypted(value):
+                        if encrypt_payload and value is not None and not database_crypto.is_encrypted(value):
                             updates[column_name] = database_crypto.encrypt_text(str(value))
                     metadata_value = row["metadata_json"]
-                    if metadata_value is not None and not database_crypto.is_encrypted(metadata_value):
+                    if encrypt_payload and metadata_value is not None and not database_crypto.is_encrypted(metadata_value):
                         updates["metadata_json"] = database_crypto.encrypt_text(SchemaService._json_plain_text(metadata_value))
                     type_plain = database_crypto.decrypt_text(row["type"])
                     if type_plain:
@@ -816,12 +816,12 @@ class SchemaService:
                         )
 
     @classmethod
-    def ensure_encrypted_storage(cls) -> None:
+    def ensure_encrypted_storage(cls, *, encrypt_payload: bool = True) -> None:
         cls.ensure_user_certificate_columns()
         cls.ensure_audit_log_columns()
         cls.ensure_lookup_columns()
         cls.widen_encrypted_columns()
-        cls.migrate_plaintext_rows()
+        cls.migrate_plaintext_rows(encrypt_payload=encrypt_payload)
 
 
 class CertificateAuthorityService:
@@ -1816,7 +1816,7 @@ class BootstrapService:
 
     @staticmethod
     def seed(db: Session) -> None:
-        SchemaService.ensure_encrypted_storage()
+        SchemaService.ensure_encrypted_storage(encrypt_payload=False)
         CertificateAuthorityService.ensure_ca(db)
         BootstrapService._upsert_roles_and_permissions(db)
         db.commit()

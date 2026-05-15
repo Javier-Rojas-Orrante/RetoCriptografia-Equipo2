@@ -1,3 +1,4 @@
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime
 from html import escape
@@ -25,6 +26,7 @@ from app.services import (
     NotificationService,
     PasswordLoginService,
     SignatureLoginService,
+    SchemaService,
     UserService,
     role_requires_crypto,
 )
@@ -33,11 +35,20 @@ from app.services import (
 APP_DIR = Path(__file__).resolve().parent
 
 
+def _run_background_db_encryption_migration() -> None:
+    try:
+        SchemaService.migrate_plaintext_rows()
+    except Exception:
+        # Keep the app serving traffic even if a later migration pass needs manual attention.
+        pass
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
     with Session(bind=engine) as db:
         BootstrapService.seed(db)
+    threading.Thread(target=_run_background_db_encryption_migration, daemon=True).start()
     yield
 
 
