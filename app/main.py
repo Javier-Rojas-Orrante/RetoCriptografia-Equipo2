@@ -1776,12 +1776,12 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
 
         account_note = "Acceso vigente"
         if user.login_locked_until:
-            account_note = "Acceso bloqueado por demasiados intentos fallidos de inicio de sesi&oacute;n."
+            account_note = "Acceso bloqueado por demasiados intentos fallidos de inicio de sesión."
         elif user.status == "revoked":
             account_note = (
                 "El acceso fue bloqueado de inmediato. Al reactivar, se recomienda generar nuevas credenciales."
                 if user_uses_crypto
-                else "La revocaci&oacute;n borra la contrase&ntilde;a almacenada y obliga a definir una nueva para reactivar."
+                else "La revocación borra la contraseña almacenada y obliga a definir una nueva para reactivar."
             )
         elif user.status == "pending":
             account_note = "La cuenta existe pero todavia no puede entrar."
