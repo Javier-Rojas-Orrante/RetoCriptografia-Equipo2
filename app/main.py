@@ -216,10 +216,10 @@ def render_certificate_page(title: str, summary: dict, back_href: str) -> str:
             --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.05);
           }}
           *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
-          body {{ background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 14px; line-height: 1.6; -webkit-font-smoothing: antialiased; }}
+          body {{ background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased; }}
           main {{ max-width: 780px; margin: 0 auto; padding: 32px 20px 64px; }}
-          h1 {{ font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }}
-          h2 {{ font-size: 14px; font-weight: 600; margin: 20px 0 10px; }}
+          h1 {{ font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }}
+          h2 {{ font-size: 16px; font-weight: 600; margin: 20px 0 10px; }}
           .card {{ background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: 28px; }}
           .topbar {{ display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }}
           .back-link {{ display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; font-weight: 400; text-decoration: none; }}
@@ -436,13 +436,12 @@ def base_page(title: str, body: str, actor=None, portal_sections: list | None = 
           }}
           *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
           html, body {{ height: 100%; }}
-          body {{ background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 14px; line-height: 1.6; -webkit-font-smoothing: antialiased; display: flex; min-height: 100vh; }}
+          body {{ background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased; display: flex; min-height: 100vh; }}
 
           /* ─── Watermark ───────────────────────────────── */
           .page-bg-watermark {{
-            position: fixed; top: -80px; right: -100px;
-            width: 900px; pointer-events: none; opacity: 0.13; z-index: 0;
-            transform: scaleX(-1);
+            position: fixed; top: -60px; right: -80px;
+            width: 900px; pointer-events: none; opacity: 0.15; z-index: 0;
           }}
           .page-bg-watermark-2 {{
             position: fixed; bottom: -80px; right: -60px;
@@ -533,18 +532,18 @@ def base_page(title: str, body: str, actor=None, portal_sections: list | None = 
             position: relative; z-index: 1;
           }}
           main {{ max-width: 1400px; margin: 0 auto; padding: 36px 48px 80px; position: relative; z-index: 1; }}
-          h1 {{ font-size: 20px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.3; }}
-          h2 {{ font-size: 15px; font-weight: 600; letter-spacing: -0.1px; line-height: 1.4; }}
+          h1 {{ font-size: 22px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.3; }}
+          h2 {{ font-size: 16px; font-weight: 600; letter-spacing: -0.1px; line-height: 1.4; }}
           p {{ margin: 0; }}
           .card {{ background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); position: relative; z-index: 2; }}
           .panel {{ background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: 24px; position: relative; z-index: 2; }}
           .stack {{ display: flex; flex-direction: column; gap: 14px; }}
           .grid {{ display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }}
-          label {{ display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 500; color: var(--text); }}
-          input, select {{ font: inherit; font-size: 14px; padding: 9px 12px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); transition: border-color .15s, box-shadow .15s; outline: none; width: 100%; }}
+          label {{ display: flex; flex-direction: column; gap: 5px; font-size: 14px; font-weight: 500; color: var(--text); }}
+          input, select {{ font: inherit; font-size: 15px; padding: 9px 12px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); transition: border-color .15s, box-shadow .15s; outline: none; width: 100%; }}
           input:focus, select:focus {{ border-color: var(--accent); box-shadow: 0 0 0 3px rgba(224,96,32,0.12); }}
           input[type="file"] {{ padding: 7px 10px; cursor: pointer; background: var(--surface-2); }}
-          button {{ font: inherit; font-size: 13px; font-weight: 600; padding: 9px 18px; border-radius: var(--radius); border: none; cursor: pointer; transition: background .15s; }}
+          button {{ font: inherit; font-size: 14px; font-weight: 600; padding: 9px 18px; border-radius: var(--radius); border: none; cursor: pointer; transition: background .15s; }}
           .btn-primary, button[type="submit"] {{ background: var(--accent); color: #fff; }}
           .btn-primary:hover, button[type="submit"]:hover {{ background: var(--accent-dark); }}
           .danger-button {{ background: #dc2626; color: #fff; }}
@@ -589,18 +588,12 @@ def base_page(title: str, body: str, actor=None, portal_sections: list | None = 
         </style>
       </head>
       <body>
-        <img src="/static/mariposa.png" class="page-bg-watermark" alt="" aria-hidden="true">
-        <img src="/static/mariposa.png" class="page-bg-watermark-2" alt="" aria-hidden="true">
+        <img src="/static/nuevamariposa.png" class="page-bg-watermark" alt="" aria-hidden="true">
+
         <aside class="sidebar">
           <div class="sidebar-brand">
-            <div class="sidebar-brand-logo">
-              {BUTTERFLY_SVG}
-              <div class="sidebar-brand-text">
-                <div class="sidebar-brand-name">Casa Monarca</div>
-                <div class="sidebar-brand-sub">Gestor de Identidades</div>
-              </div>
-            </div>
-            <p class="sidebar-tagline">Ayuda Humanitaria al Migrante, A.B.P.</p>
+            <img src="/static/Logoenblanco.png" alt="Casa Monarca" style="width:100%;max-width:200px;height:auto;display:block;margin:0 auto 6px;">
+            <p class="sidebar-tagline" style="text-align:center;">Gestor de Identidades</p>
           </div>
           {_user_block}
           <nav class="sidebar-nav">
@@ -629,168 +622,221 @@ def base_page(title: str, body: str, actor=None, portal_sections: list | None = 
 
 
 def render_login_page(error: str | None = None, notice: str | None = None) -> str:
-    BUTTERFLY_SVG = """<svg width="52" height="46" viewBox="0 0 80 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <ellipse cx="20" cy="22" rx="19" ry="14" fill="#d1145a" transform="rotate(-20 20 22)"/>
-      <ellipse cx="14" cy="36" rx="12" ry="8" fill="#d1145a" opacity=".7" transform="rotate(15 14 36)"/>
-      <ellipse cx="60" cy="22" rx="19" ry="14" fill="#f06b35" transform="rotate(20 60 22)"/>
-      <ellipse cx="66" cy="36" rx="12" ry="8" fill="#f06b35" opacity=".7" transform="rotate(-15 66 36)"/>
-      <ellipse cx="40" cy="32" rx="3.5" ry="18" fill="#1a2332"/>
-      <circle cx="40" cy="13" r="3" fill="#1a2332"/>
-      <line x1="40" y1="10" x2="30" y2="4" stroke="#1a2332" stroke-width="1.5" stroke-linecap="round"/>
-      <line x1="40" y1="10" x2="50" y2="4" stroke="#1a2332" stroke-width="1.5" stroke-linecap="round"/>
-    </svg>"""
-    error_html = f"<div class='error'>{escape(error)}</div>" if error else ""
-    login_hint = (
-        "Administradores y Coordinadores inician sesi&oacute;n con archivos de acceso. "
-        "Operativos y Voluntarios con usuario y contrase&ntilde;a."
-    )
-    if not settings.seed_demo_data:
-        login_hint = (
-            "Administradores y Coordinadores inician sesi&oacute;n con archivos de acceso. "
-            "Si el administrador inicial a&uacute;n no tiene credenciales, puede entrar temporalmente con su contrase&ntilde;a."
-        )
+    error_html = f'<div class="alert-error">{escape(error)}</div>' if error else ""
+    notice_html = render_notice(notice)
     password_hint = "Contrase&ntilde;a de los archivos de acceso"
     if not settings.seed_demo_data:
         password_hint = "Contrase&ntilde;a de los archivos de acceso o clave inicial del administrador"
-    credentials_panel = """
-          <details style="margin-top:18px;">
-            <summary>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-              Credenciales demo
-            </summary>
-            <div style="margin-top:10px;padding:12px 14px;background:#faf7f3;border:1px solid #e5ddd3;border-radius:8px;display:grid;gap:5px;font-size:12px;color:#6b7280;">
-              <span><code>admin / admin</code> &mdash; acceso directo sin archivos</span>
-              <span><code>admin@demo.local</code> + archivo de acceso + certificado + <code>admin</code></span>
-              <span><code>coord.legal@demo.local</code> + archivo de acceso + certificado + <code>demo1234</code></span>
-              <span><code>operativo / demo1234</code></span>
-              <span><code>voluntario / demo1234</code></span>
-            </div>
-          </details>
-    """
-    if not settings.seed_demo_data:
-        credentials_panel = """
-          <details style="margin-top:18px;">
-            <summary>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-              Primer acceso en producci&oacute;n
-            </summary>
-            <div style="margin-top:10px;padding:12px 14px;background:#faf7f3;border:1px solid #e5ddd3;border-radius:8px;display:grid;gap:5px;font-size:12px;color:#6b7280;">
-              <span>Define <code>BOOTSTRAP_ADMIN_EMAIL</code> y <code>BOOTSTRAP_ADMIN_PASSWORD</code> al desplegar.</span>
-              <span>Ese administrador puede entrar con contrase&ntilde;a en la etapa inicial, hasta generar sus archivos de acceso.</span>
-            </div>
-          </details>
-        """
+    demo_panel = ""
+    if settings.seed_demo_data:
+        demo_panel = """
+        <details style="margin-bottom:16px;">
+          <summary style="cursor:pointer;list-style:none;font-size:12px;font-weight:600;color:#6b7280;display:flex;align-items:center;gap:6px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            Credenciales demo
+          </summary>
+          <div style="margin-top:8px;padding:10px 12px;background:#faf7f3;border:1px solid #e5ddd3;border-radius:8px;font-size:12px;color:#6b7280;display:grid;gap:4px;">
+            <span><code>admin / admin</code> &mdash; acceso directo sin archivos</span>
+            <span><code>admin@demo.local</code> + archivo + certificado + <code>admin</code></span>
+            <span><code>operativo / demo1234</code></span>
+          </div>
+        </details>"""
     return f"""<!doctype html>
-    <html lang="es">
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width,initial-scale=1">
-      <title>Iniciar sesi&oacute;n &middot; Casa Monarca</title>
-      <link rel="preconnect" href="https://fonts.googleapis.com">
-      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-      <style>
-        *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
-        body{{font-family:'Inter',system-ui,sans-serif;font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;display:flex;min-height:100vh}}
-        .login-left{{flex:1;background:#1a2332;display:flex;flex-direction:column;justify-content:space-between;padding:48px 52px;min-width:0;position:relative;overflow:hidden;}}
-        .login-left-bg{{position:absolute;inset:0;background:url('/static/CM5.jpeg') center/cover no-repeat;opacity:.35;}}
-        .login-left-fade{{position:absolute;inset:0;background:linear-gradient(to right, #1a2332 28%, rgba(26,35,50,0) 100%);}}
-        .login-left-content{{position:relative;z-index:1;display:flex;flex-direction:column;justify-content:space-between;height:100%;}}
-        .login-right{{width:460px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#f6f2ec;padding:40px 32px}}
-        @media(max-width:800px){{.login-left{{display:none}}.login-right{{width:100%}}}}
-        .brand-name{{font-size:32px;font-weight:800;color:#fff;letter-spacing:-1px;line-height:1.1;margin-top:24px}}
-        .brand-sub{{font-size:13px;color:#8b9ab0;text-transform:uppercase;letter-spacing:.1em;font-weight:500;margin-top:6px}}
-        .brand-tagline{{font-size:15px;color:#c8d0da;line-height:1.6;margin-top:32px;max-width:320px}}
-        .left-footer{{font-size:12px;color:#4a5568}}
-        .card{{background:#fff;border:1px solid #e5ddd3;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 16px rgba(0,0,0,0.05);padding:36px 32px;width:100%;max-width:400px}}
-        .form-title{{font-size:20px;font-weight:700;color:#1a2332;letter-spacing:-.3px}}
-        .form-sub{{font-size:13px;color:#6b7280;margin-top:4px}}
-        .stack{{display:flex;flex-direction:column;gap:14px;margin-top:24px}}
-        label{{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:500;color:#1a2332}}
-        .label-hint{{font-size:11px;color:#6b7280;font-weight:400;margin-top:-2px}}
-        input,select{{font:inherit;font-size:14px;padding:9px 12px;border-radius:10px;border:1px solid #cfc4b5;background:#fff;color:#1a2332;outline:none;width:100%;transition:border-color .15s,box-shadow .15s}}
-        input:focus,select:focus{{border-color:#e06020;box-shadow:0 0 0 3px rgba(224,96,32,0.12)}}
-        input[type="file"]{{padding:7px 10px;cursor:pointer;background:#faf7f3}}
-        .btn{{font:inherit;font-size:14px;font-weight:600;padding:11px;border-radius:10px;border:none;cursor:pointer;transition:background .15s;width:100%;background:#e06020;color:#fff;margin-top:6px}}
-        .btn:hover{{background:#bf4f10}}
-        .btn-ghost{{background:#faf7f3;color:#1a2332;border:1px solid #cfc4b5;margin-top:0}}
-        .btn-ghost:hover{{background:#f0ebe4}}
-        .divider{{border:none;border-top:1px solid #e5ddd3;margin:20px 0}}
-        .ok{{background:#dcfce7;border:1px solid #86efac;color:#166534;border-radius:10px;padding:10px 14px;font-size:13px}}
-        .error{{background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:10px 14px;font-size:13px}}
-        code{{background:#faf7f3;border:1px solid #e5ddd3;border-radius:4px;padding:1px 5px;font-family:'Courier New',monospace;font-size:12px}}
-        details summary{{cursor:pointer;list-style:none;font-size:12px;font-weight:600;color:#6b7280;display:flex;align-items:center;gap:6px;user-select:none}}
-        details summary::-webkit-details-marker{{display:none}}
-      </style>
-    </head>
-    <body>
-      <div class="login-left">
-        <div class="login-left-bg"></div>
-        <div class="login-left-fade"></div>
-        <div class="login-left-content">
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Iniciar sesi&oacute;n &middot; Casa Monarca</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
+    body{{font-family:'Inter',system-ui,sans-serif;font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;background:#111827;}}
+    /* ── Left panel ── */
+    .ll{{flex:1;position:relative;display:flex;flex-direction:column;justify-content:space-between;padding:48px 52px;overflow:hidden;min-width:0;}}
+    .ll-bg{{position:absolute;inset:0;background:url('/static/CM5.jpeg') center/cover no-repeat;opacity:.4;}}
+    .ll-overlay{{position:absolute;inset:0;background:linear-gradient(135deg,rgba(17,24,39,.85) 0%,rgba(17,24,39,.5) 100%);}}
+    .ll-inner{{position:relative;z-index:1;display:flex;flex-direction:column;justify-content:space-between;height:100%;gap:40px;}}
+    .ll-logo{{height:68px;width:auto;display:block;}}
+    .ll-sub{{font-size:11px;font-weight:600;color:#8b9ab0;text-transform:uppercase;letter-spacing:.12em;margin-top:10px;}}
+    .ll-line{{width:36px;height:3px;background:#e06020;border-radius:2px;margin:24px 0;}}
+    .ll-hero{{font-size:34px;font-weight:800;color:#fff;line-height:1.2;letter-spacing:-.5px;max-width:380px;}}
+    .ll-hero em{{font-style:normal;color:#e06020;}}
+    .ll-security{{display:flex;align-items:flex-start;gap:14px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:16px 18px;max-width:360px;margin-top:40px;}}
+    .ll-shield{{width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;}}
+    .ll-sc-title{{font-size:14px;font-weight:700;color:#fff;}}
+    .ll-sc-sub{{font-size:12px;color:#8b9ab0;margin-top:2px;line-height:1.5;}}
+    .ll-footer{{font-size:12px;color:#4a5568;margin-top:auto;padding-top:24px;display:flex;align-items:center;gap:6px;}}
+    @media(max-width:860px){{.ll{{display:none;}}}}
+    /* ── Right panel ── */
+    .lr{{width:480px;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:32px 28px;background:rgba(255,255,255,.03);}}
+    @media(max-width:860px){{.lr{{width:100%;background:#f6f2ec;}}}}
+    /* ── Card ── */
+    .card{{background:#fff;border-radius:18px;box-shadow:0 8px 40px rgba(0,0,0,.22),0 2px 8px rgba(0,0,0,.12);padding:32px 32px 28px;width:100%;max-width:420px;}}
+    .card-hdr{{display:flex;align-items:flex-start;gap:14px;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid #f0ebe4;}}
+    .card-icon{{width:48px;height:48px;border-radius:12px;background:#fff3eb;display:flex;align-items:center;justify-content:center;flex-shrink:0;}}
+    .card-title{{font-size:22px;font-weight:800;color:#1a2332;letter-spacing:-.4px;line-height:1.2;}}
+    .card-sub{{font-size:13px;color:#6b7280;margin-top:3px;line-height:1.5;}}
+    /* ── Form ── */
+    .form-stack{{display:flex;flex-direction:column;gap:14px;}}
+    .field-label{{font-size:13px;font-weight:600;color:#1a2332;display:flex;flex-direction:column;gap:4px;}}
+    .field-hint{{font-size:11px;font-weight:400;color:#9ca3af;}}
+    .input-wrap{{position:relative;display:flex;align-items:center;}}
+    .input-wrap svg{{position:absolute;left:13px;color:#9ca3af;pointer-events:none;flex-shrink:0;}}
+    .input-wrap input{{font:inherit;font-size:14px;width:100%;padding:11px 13px 11px 38px;border-radius:10px;border:1.5px solid #e5ddd3;background:#fff;color:#1a2332;outline:none;transition:border-color .15s,box-shadow .15s;}}
+    .input-wrap input:focus{{border-color:#e06020;box-shadow:0 0 0 3px rgba(224,96,32,.1);}}
+    .eye-btn{{position:absolute;right:12px;background:none;border:none;cursor:pointer;color:#9ca3af;padding:2px;display:flex;align-items:center;}}
+    .eye-btn:hover{{color:#1a2332;}}
+    /* ── File drop zone ── */
+    .file-zone{{position:relative;display:flex;align-items:center;gap:14px;border:1.5px solid #f0d4c5;border-radius:10px;padding:13px 16px;cursor:pointer;background:#fff8f5;transition:border-color .15s,background .15s;overflow:hidden;}}
+    .file-zone:hover{{border-color:#e06020;background:#fff3eb;}}
+    .file-zone input[type="file"]{{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;}}
+    .file-zone-icon{{width:36px;height:36px;border-radius:8px;background:#fff3eb;border:1px solid #f0d4c5;display:flex;align-items:center;justify-content:center;flex-shrink:0;}}
+    .file-zone-text{{font-size:13px;font-weight:600;color:#1a2332;}}
+    .file-zone-sub{{font-size:11px;color:#e06020;font-weight:500;}}
+    /* ── Buttons ── */
+    .btn-enter{{font:inherit;font-size:15px;font-weight:700;padding:13px;border-radius:11px;border:none;cursor:pointer;width:100%;background:#e06020;color:#fff;margin-top:6px;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .15s;letter-spacing:.2px;}}
+    .btn-enter:hover{{background:#bf4f10;}}
+    .btn-ghost{{font:inherit;font-size:13px;font-weight:600;padding:10px 20px;border-radius:10px;border:1.5px solid #e5ddd3;cursor:pointer;background:#fff;color:#1a2332;display:inline-flex;align-items:center;gap:7px;transition:border-color .15s,background .15s;}}
+    .btn-ghost:hover{{background:#faf7f3;border-color:#cfc4b5;}}
+    .divider{{border:none;border-top:1px solid #f0ebe4;margin:18px 0;}}
+    .recovery-link{{display:block;text-align:center;font-size:12px;font-weight:600;color:#e06020;text-decoration:none;margin-top:14px;}}
+    .recovery-link:hover{{text-decoration:underline;}}
+    .alert-error{{background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:14px;}}
+    .alert-ok{{background:#dcfce7;border:1px solid #86efac;color:#166534;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:14px;}}
+    code{{background:#faf7f3;border:1px solid #e5ddd3;border-radius:4px;padding:1px 5px;font-family:'Courier New',monospace;font-size:11px;}}
+    details summary::-webkit-details-marker{{display:none;}}
+  </style>
+</head>
+<body>
+  <!-- Left panel -->
+  <div class="ll">
+    <div class="ll-bg"></div>
+    <div class="ll-overlay"></div>
+    <div class="ll-inner">
+      <div>
+        <img src="/static/Logoenblanco.png" alt="Casa Monarca" class="ll-logo">
+        <p class="ll-sub">Ayuda Humanitaria al Migrante, A.B.P.</p>
+        <div class="ll-line"></div>
+        <h1 class="ll-hero">Sistema de gesti&oacute;n de <em>identidades y accesos</em> para el equipo de Casa Monarca.</h1>
+        <div class="ll-security">
+          <div class="ll-shield">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e06020" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
           <div>
-            {BUTTERFLY_SVG}
-            <div class="brand-name">Casa Monarca</div>
-            <div class="brand-sub">Ayuda Humanitaria al Migrante, A.B.P.</div>
-            <p class="brand-tagline">Sistema de gesti&oacute;n de identidades y accesos para el equipo de Casa Monarca.</p>
+            <div class="ll-sc-title">Acceso seguro</div>
+            <div class="ll-sc-sub">Protegemos la informaci&oacute;n y la identidad de quienes ayudan a transformar vidas.</div>
           </div>
-          <p class="left-footer">&copy; 2026 Casa Monarca &mdash; Gestor de Identidades</p>
         </div>
       </div>
-      <div class="login-right">
-        <div class="card">
-          <div class="form-title">Iniciar sesi&oacute;n</div>
-          <div class="form-sub">{login_hint}</div>
-          {credentials_panel}
+      <p class="ll-footer">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        &copy; 2026 Casa Monarca &mdash; Gestor de Identidades
+      </p>
+    </div>
+  </div>
 
-          {render_notice(notice)}
-          {error_html}
-
-          <form method="post" action="/login" enctype="multipart/form-data" class="stack">
-            <label>Correo o usuario
-              <input name="identifier" placeholder="usuario@ejemplo.com" required autocomplete="username">
-            </label>
-            <label>Archivo de acceso
-              <span class="label-hint">Solo para Administrador y Coordinador</span>
-              <input name="private_key_file" type="file" accept=".pem,.key">
-            </label>
-            <label>Certificado de identidad
-              <span class="label-hint">Solo para Administrador y Coordinador</span>
-              <input name="certificate_file" type="file" accept=".pem,.crt">
-            </label>
-            <label>Contrase&ntilde;a
-              <span class="label-hint">{password_hint}</span>
-              <input name="password" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" required autocomplete="current-password">
-            </label>
-            <button type="submit" class="btn">Entrar</button>
-          </form>
-          <hr class="divider">
-          <div style="text-align:center;">
-            <p style="font-size:13px;color:#6b7280;margin-bottom:10px;">&iquest;Primera vez en el sistema?</p>
-            <a href="/register" style="display:inline-flex;align-items:center;gap:6px;background:#faf7f3;border:1px solid #cfc4b5;color:#1a2332;padding:9px 20px;border-radius:9px;font-size:13px;font-weight:600;text-decoration:none;">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Solicitar acceso
-            </a>
-          </div>
-          <hr class="divider">
-          <details style="text-align:left;">
-            <summary style="justify-content:center;font-size:12px;font-weight:500;color:#6b7280;">
-              &iquest;Olvidaste tu contrase&ntilde;a o perdiste tus certificados?
-            </summary>
-            <form method="post" action="/login/recovery-request" style="display:flex;flex-direction:column;gap:10px;margin-top:14px;">
-              <p style="font-size:12px;color:#6b7280;">Env&iacute;a tu nombre y correo. Un administrador verificar&aacute; tu identidad en persona y te entregar&aacute; nuevas credenciales.</p>
-              <label style="font-size:13px;font-weight:500;">Correo registrado
-                <input name="identifier" type="email" placeholder="correo@ejemplo.com" required style="margin-top:4px;">
-              </label>
-              <label style="font-size:13px;font-weight:500;">Nombre completo
-                <input name="full_name" placeholder="Nombre Apellido" required style="margin-top:4px;">
-              </label>
-              <button type="submit" class="btn btn-ghost" style="margin-top:0;">Solicitar recuperaci&oacute;n</button>
-            </form>
-          </details>
+  <!-- Right panel -->
+  <div class="lr">
+    <div class="card">
+      <div class="card-hdr">
+        <div class="card-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e06020" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <div>
+          <div class="card-title">Iniciar sesi&oacute;n</div>
+          <div class="card-sub">Acceso seguro para Administradores, Coordinadores y Voluntarios autorizados.</div>
         </div>
       </div>
-    </body>
-    </html>"""
+
+      {demo_panel}{notice_html}{error_html}
+
+      <form method="post" action="/login" enctype="multipart/form-data" class="form-stack">
+        <label class="field-label">Correo o usuario
+          <div class="input-wrap">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <input name="identifier" placeholder="usuario@ejemplo.com" required autocomplete="username">
+          </div>
+        </label>
+
+        <label class="field-label">Archivo de acceso
+          <span class="field-hint">Solo para Administrador y Coordinador</span>
+          <div class="file-zone">
+            <div class="file-zone-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e06020" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+            </div>
+            <div>
+              <div class="file-zone-text">Arrastra tu archivo aqu&iacute;</div>
+              <div class="file-zone-sub">o selecciona un archivo</div>
+            </div>
+            <input type="file" name="private_key_file" accept=".pem,.key" id="pkf">
+          </div>
+        </label>
+
+        <label class="field-label">Certificado de identidad
+          <span class="field-hint">Solo para Administrador y Coordinador</span>
+          <div class="file-zone">
+            <div class="file-zone-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e06020" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+            </div>
+            <div>
+              <div class="file-zone-text">Arrastra tu certificado aqu&iacute;</div>
+              <div class="file-zone-sub">o selecciona un archivo</div>
+            </div>
+            <input type="file" name="certificate_file" accept=".pem,.crt" id="cf">
+          </div>
+        </label>
+
+        <label class="field-label">Contrase&ntilde;a
+          <span class="field-hint">{password_hint}</span>
+          <div class="input-wrap">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <input name="password" id="pwd" type="password" placeholder="Ingresa tu contrase&ntilde;a" required autocomplete="current-password">
+            <button type="button" class="eye-btn" onclick="var i=document.getElementById('pwd');i.type=i.type==='password'?'text':'password'">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </label>
+
+        <button type="submit" class="btn-enter">
+          Entrar
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+      </form>
+
+      <div class="divider"></div>
+      <div style="text-align:center;">
+        <p style="font-size:13px;color:#6b7280;margin-bottom:10px;">&iquest;Primera vez en el sistema?</p>
+        <a href="/register" class="btn-ghost">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Solicitar acceso
+        </a>
+      </div>
+
+      <details style="margin-top:16px;">
+        <summary style="cursor:pointer;list-style:none;text-align:center;">
+          <a class="recovery-link" style="pointer-events:none;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:middle;margin-right:4px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            &iquest;Olvidaste tu contrase&ntilde;a o perdiste tus certificados?
+          </a>
+        </summary>
+        <form method="post" action="/login/recovery-request" style="display:flex;flex-direction:column;gap:10px;margin-top:14px;padding:14px;background:#faf7f3;border-radius:10px;border:1px solid #e5ddd3;">
+          <p style="font-size:12px;color:#6b7280;line-height:1.5;">Env&iacute;a tu nombre y correo. Un administrador verificar&aacute; tu identidad en persona y te entregar&aacute; nuevas credenciales.</p>
+          <label style="font-size:13px;font-weight:500;display:flex;flex-direction:column;gap:4px;">Correo registrado
+            <input name="identifier" type="email" placeholder="correo@ejemplo.com" required style="font:inherit;font-size:14px;padding:9px 12px;border-radius:9px;border:1.5px solid #e5ddd3;outline:none;width:100%;">
+          </label>
+          <label style="font-size:13px;font-weight:500;display:flex;flex-direction:column;gap:4px;">Nombre completo
+            <input name="full_name" placeholder="Nombre Apellido" required style="font:inherit;font-size:14px;padding:9px 12px;border-radius:9px;border:1.5px solid #e5ddd3;outline:none;width:100%;">
+          </label>
+          <button type="submit" style="font:inherit;font-size:13px;font-weight:600;padding:10px;border-radius:9px;border:1.5px solid #e5ddd3;cursor:pointer;background:#fff;color:#1a2332;">Solicitar recuperaci&oacute;n</button>
+        </form>
+      </details>
+    </div>
+  </div>
+</body>
+</html>"""
+
+
 
 
 def render_self_register_page(error: str | None = None) -> str:
@@ -831,7 +877,7 @@ def render_self_register_page(error: str | None = None) -> str:
     <body>
       <div class="card">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid #e5ddd3;">
-          {BUTTERFLY_SVG_SMALL}
+          <img src="/static/logoCasaMonarca.png" alt="Casa Monarca" style="height:44px;width:auto;border-radius:6px;">
           <div>
             <div style="font-size:18px;font-weight:700;color:#1a2332;letter-spacing:-.3px;">Solicitar acceso</div>
             <div style="font-size:12px;color:#6b7280;margin-top:1px;">Casa Monarca &mdash; Gestor de Identidades</div>
@@ -1015,17 +1061,17 @@ def render_portal_page(
         <div class="card" style="padding:24px;margin-top:18px;">
           <h2 style="margin-bottom:18px;">Resumen del sistema</h2>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px;">
-            <div style="padding:16px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;">
-              <p style="font-size:28px;font-weight:700;color:#166534;line-height:1;">{len(activos)}</p>
-              <p style="font-size:11px;font-weight:600;color:#166534;margin-top:4px;">Beneficiarios activos</p>
+            <div style="padding:16px;background:#fff;border:1px solid #e5ddd3;border-radius:10px;">
+              <p style="font-size:28px;font-weight:700;color:#1a2332;line-height:1;">{len(activos)}</p>
+              <p style="font-size:11px;font-weight:600;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Beneficiarios activos</p>
             </div>
-            <div style="padding:16px;background:#eff6ff;border:1px solid #93c5fd;border-radius:10px;">
-              <p style="font-size:28px;font-weight:700;color:#1d4ed8;line-height:1;">{len(bens)}</p>
-              <p style="font-size:11px;font-weight:600;color:#1d4ed8;margin-top:4px;">Total registrados</p>
+            <div style="padding:16px;background:#fff;border:1px solid #e5ddd3;border-radius:10px;">
+              <p style="font-size:28px;font-weight:700;color:#1a2332;line-height:1;">{len(bens)}</p>
+              <p style="font-size:11px;font-weight:600;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Total registrados</p>
             </div>
-            <div style="padding:16px;background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;">
-              <p style="font-size:28px;font-weight:700;color:#92400e;line-height:1;">{len(en_revision)}</p>
-              <p style="font-size:11px;font-weight:600;color:#92400e;margin-top:4px;">En revisi&oacute;n</p>
+            <div style="padding:16px;background:#fff;border:1px solid #e5ddd3;border-radius:10px;">
+              <p style="font-size:28px;font-weight:700;color:#1a2332;line-height:1;">{len(en_revision)}</p>
+              <p style="font-size:11px;font-weight:600;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">En revisi&oacute;n</p>
             </div>
             <div style="padding:16px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;">
               <p style="font-size:28px;font-weight:700;color:#166534;line-height:1;">{len(nuevos)}</p>
@@ -1434,51 +1480,57 @@ def _render_beneficiarios_admin(actor, bens: list) -> str:
       <summary><h2>Beneficiarios</h2><span class="summary-button">Abrir</span></summary>
       <div class="panel-body" style="padding:16px 20px 24px;">
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px;">
-          <div style="padding:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;">
-            <p style="font-size:24px;font-weight:700;color:#166534;line-height:1;">{len(activos)}</p>
-            <p style="font-size:11px;font-weight:600;color:#166534;margin-top:4px;">Activos</p>
+          <div style="padding:14px;background:#fff;border:1px solid #e5ddd3;border-radius:10px;">
+            <p style="font-size:24px;font-weight:700;color:#1a2332;line-height:1;">{len(activos)}</p>
+            <p style="font-size:11px;font-weight:600;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Activos</p>
           </div>
-          <div style="padding:14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:10px;">
-            <p style="font-size:24px;font-weight:700;color:#1d4ed8;line-height:1;">{len(bens)}</p>
-            <p style="font-size:11px;font-weight:600;color:#1d4ed8;margin-top:4px;">Total</p>
+          <div style="padding:14px;background:#fff;border:1px solid #e5ddd3;border-radius:10px;">
+            <p style="font-size:24px;font-weight:700;color:#1a2332;line-height:1;">{len(bens)}</p>
+            <p style="font-size:11px;font-weight:600;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Total</p>
           </div>
-          <div style="padding:14px;background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;">
-            <p style="font-size:24px;font-weight:700;color:#92400e;line-height:1;">{len(en_rev)}</p>
-            <p style="font-size:11px;font-weight:600;color:#92400e;margin-top:4px;">En revisi&oacute;n</p>
+          <div style="padding:14px;background:#fff;border:1px solid #e5ddd3;border-radius:10px;">
+            <p style="font-size:24px;font-weight:700;color:#1a2332;line-height:1;">{len(en_rev)}</p>
+            <p style="font-size:11px;font-weight:600;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">En revisi&oacute;n</p>
           </div>
-          <div style="padding:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;">
-            <p style="font-size:24px;font-weight:700;color:#166534;line-height:1;">{len(nuevos)}</p>
-            <p style="font-size:11px;font-weight:600;color:#166534;margin-top:4px;">Nuevos</p>
+          <div style="padding:14px;background:#fff;border:1px solid #e5ddd3;border-radius:10px;">
+            <p style="font-size:24px;font-weight:700;color:#1a2332;line-height:1;">{len(nuevos)}</p>
+            <p style="font-size:11px;font-weight:600;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Nuevos</p>
           </div>
         </div>
-        <details style="margin-bottom:20px;border:1px solid #e5ddd3;border-radius:8px;padding:14px 16px;">
-          <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#1a2332;list-style:none;">+ Registrar nuevo beneficiario</summary>
-          <form method="post" action="/ui/beneficiarios" style="margin-top:14px;">
-
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-              <label style="display:flex;flex-direction:column;gap:4px;">Nombre completo
-                <input name="nombre_completo" placeholder="Apellido Apellido, Nombre" required style="margin-top:0;">
-              </label>
-              <label style="display:flex;flex-direction:column;gap:4px;">Pa&iacute;s de origen
-                <input name="pais_origen" placeholder="Honduras, Guatemala, Venezuela..." required style="margin-top:0;">
-              </label>
-              <label style="display:flex;flex-direction:column;gap:4px;">&Aacute;rea
-                <select name="area" required style="margin-top:0;">
-                  <option value="">-- Selecciona --</option>
-                  <option value="PSICOSOCIAL">Psicosocial</option>
-                  <option value="LEGAL">Legal</option>
-                  <option value="HUMANITARIO">Humanitario</option>
-                  <option value="ADMINISTRACION">Administraci&oacute;n</option>
-                  <option value="COMUNICACION">Comunicaci&oacute;n</option>
-                </select>
-              </label>
-              <label style="display:flex;flex-direction:column;gap:4px;">Notas (opcional)
-                <input name="notas" placeholder="Situaci&oacute;n general..." style="margin-top:0;">
-              </label>
+        <div style="background:#fff;border:1px solid #e5ddd3;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:20px;overflow:hidden;">
+          <div style="padding:18px 24px;border-bottom:1px solid #e5ddd3;display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <h2 style="font-size:16px;font-weight:700;color:#1a2332;margin:0;">Registrar beneficiario</h2>
+              <p style="font-size:13px;color:#6b7280;margin-top:3px;">Captura los datos del beneficiario. El registro queda visible para el coordinador del &aacute;rea.</p>
             </div>
-            <button type="submit" style="background:var(--accent);color:#fff;padding:9px 20px;border-radius:8px;font-size:13px;font-weight:600;border:none;cursor:pointer;">Registrar</button>
-          </form>
-        </details>
+          </div>
+          <div style="padding:20px 24px;">
+            <form method="post" action="/ui/beneficiarios">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
+                <label style="display:flex;flex-direction:column;gap:5px;">Nombre completo
+                  <input name="nombre_completo" placeholder="Apellido Apellido, Nombre" required>
+                </label>
+                <label style="display:flex;flex-direction:column;gap:5px;">Pa&iacute;s de origen
+                  <input name="pais_origen" placeholder="Honduras, Guatemala, Venezuela...">
+                </label>
+                <label style="display:flex;flex-direction:column;gap:5px;">&Aacute;rea de atenci&oacute;n
+                  <select name="area" required>
+                    <option value="">-- Selecciona --</option>
+                    <option value="PSICOSOCIAL">Psicosocial</option>
+                    <option value="LEGAL">Legal</option>
+                    <option value="HUMANITARIO">Humanitario</option>
+                    <option value="ADMINISTRACION">Administraci&oacute;n</option>
+                    <option value="COMUNICACION">Comunicaci&oacute;n</option>
+                  </select>
+                </label>
+                <label style="display:flex;flex-direction:column;gap:5px;">Notas (opcional)
+                  <input name="notas" placeholder="Situaci&oacute;n general, motivo de solicitud...">
+                </label>
+              </div>
+              <button type="submit">Registrar beneficiario</button>
+            </form>
+          </div>
+        </div>
         <div style="border:1px solid #e5ddd3;border-radius:8px;overflow:hidden;">
           {rows or '<p style="padding:14px;font-size:13px;color:#6b7280;">Sin registros a&uacute;n.</p>'}
         </div>
@@ -1936,25 +1988,45 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
     _beneficiarios_content = f"""
     {_sec_hdr("Beneficiarios", f"{len(_bens)} registros &mdash; {_bens_activos} activos")}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:18px;">
-      <div style="padding:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;"><p style="font-size:24px;font-weight:700;color:#166534;line-height:1;">{_bens_activos}</p><p style="font-size:11px;font-weight:600;color:#166534;margin-top:4px;">Activos</p></div>
-      <div style="padding:14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:10px;"><p style="font-size:24px;font-weight:700;color:#1d4ed8;line-height:1;">{len(_bens)}</p><p style="font-size:11px;font-weight:600;color:#1d4ed8;margin-top:4px;">Total</p></div>
-      <div style="padding:14px;background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;"><p style="font-size:24px;font-weight:700;color:#92400e;line-height:1;">{_bens_revision}</p><p style="font-size:11px;font-weight:600;color:#92400e;margin-top:4px;">En revisi&oacute;n</p></div>
-      <div style="padding:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;"><p style="font-size:24px;font-weight:700;color:#166534;line-height:1;">{_bens_nuevos}</p><p style="font-size:11px;font-weight:600;color:#166534;margin-top:4px;">Nuevos</p></div>
+      <div style="padding:14px;background:#fff;border:1px solid #e5ddd3;border-radius:10px;"><p style="font-size:24px;font-weight:700;color:#1a2332;line-height:1;">{_bens_activos}</p><p style="font-size:11px;font-weight:600;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Activos</p></div>
+      <div style="padding:14px;background:#fff;border:1px solid #e5ddd3;border-radius:10px;"><p style="font-size:24px;font-weight:700;color:#1a2332;line-height:1;">{len(_bens)}</p><p style="font-size:11px;font-weight:600;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Total</p></div>
+      <div style="padding:14px;background:#fff;border:1px solid #e5ddd3;border-radius:10px;"><p style="font-size:24px;font-weight:700;color:#1a2332;line-height:1;">{_bens_revision}</p><p style="font-size:11px;font-weight:600;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">En revisi&oacute;n</p></div>
+      <div style="padding:14px;background:#fff;border:1px solid #e5ddd3;border-radius:10px;"><p style="font-size:24px;font-weight:700;color:#1a2332;line-height:1;">{_bens_nuevos}</p><p style="font-size:11px;font-weight:600;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Nuevos</p></div>
     </div>
-    <details style="margin-bottom:18px;border:1px solid #e5ddd3;border-radius:10px;padding:14px 16px;background:#fff;">
-      <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#1a2332;list-style:none;">+ Registrar nuevo beneficiario</summary>
-      <form method="post" action="/ui/beneficiarios" style="margin-top:14px;display:flex;flex-direction:column;gap:12px;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          <label style="display:flex;flex-direction:column;gap:4px;">Nombre completo<input name="nombre_completo" placeholder="Apellido Apellido, Nombre" required style="margin-top:0;"></label>
-          <label style="display:flex;flex-direction:column;gap:4px;">Pa&iacute;s de origen<input name="pais_origen" placeholder="Honduras, Guatemala..." required style="margin-top:0;"></label>
-          <label style="display:flex;flex-direction:column;gap:4px;">&Aacute;rea
-            <select name="area" required style="margin-top:0;"><option value="">-- Selecciona --</option><option value="PSICOSOCIAL">Psicosocial</option><option value="LEGAL">Legal</option><option value="HUMANITARIO">Humanitario</option><option value="ADMINISTRACION">Administraci&oacute;n</option><option value="COMUNICACION">Comunicaci&oacute;n</option></select>
-          </label>
-          <label style="display:flex;flex-direction:column;gap:4px;">Notas (opcional)<input name="notas" placeholder="Situaci&oacute;n general..." style="margin-top:0;"></label>
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:18px;">
+      <div style="padding:18px 24px;border-bottom:1px solid #e5ddd3;display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <h2 style="font-size:16px;font-weight:700;color:#1a2332;margin:0;">Registrar beneficiario</h2>
+          <p style="font-size:13px;color:#6b7280;margin-top:3px;">Captura los datos del beneficiario. El registro queda visible para el coordinador del &aacute;rea.</p>
         </div>
-        <button type="submit" style="background:var(--accent);color:#fff;padding:9px 20px;border-radius:8px;font-size:13px;font-weight:600;border:none;cursor:pointer;align-self:flex-start;">Registrar</button>
-      </form>
-    </details>
+      </div>
+      <div style="padding:20px 24px;">
+        <form method="post" action="/ui/beneficiarios">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
+            <label style="display:flex;flex-direction:column;gap:5px;">Nombre completo
+              <input name="nombre_completo" placeholder="Apellido Apellido, Nombre" required>
+            </label>
+            <label style="display:flex;flex-direction:column;gap:5px;">Pa&iacute;s de origen
+              <input name="pais_origen" placeholder="Honduras, Guatemala, Venezuela...">
+            </label>
+            <label style="display:flex;flex-direction:column;gap:5px;">&Aacute;rea de atenci&oacute;n
+              <select name="area" required>
+                <option value="">-- Selecciona --</option>
+                <option value="PSICOSOCIAL">Psicosocial</option>
+                <option value="LEGAL">Legal</option>
+                <option value="HUMANITARIO">Humanitario</option>
+                <option value="ADMINISTRACION">Administraci&oacute;n</option>
+                <option value="COMUNICACION">Comunicaci&oacute;n</option>
+              </select>
+            </label>
+            <label style="display:flex;flex-direction:column;gap:5px;">Notas (opcional)
+              <input name="notas" placeholder="Situaci&oacute;n general, motivo de solicitud...">
+            </label>
+          </div>
+          <button type="submit">Registrar beneficiario</button>
+        </form>
+      </div>
+    </div>
     <div class="card" style="overflow:hidden;">
       {_bens_rows or '<p style="padding:14px;font-size:13px;color:#6b7280;">Sin registros a&uacute;n.</p>'}
     </div>
@@ -2031,7 +2103,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
             --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.05);
           }}
           *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
-          body {{ background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 14px; line-height: 1.6; -webkit-font-smoothing: antialiased; display: flex; min-height: 100vh; }}
+          body {{ background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased; display: flex; min-height: 100vh; }}
           /* ── Sidebar ── */
           .sidebar {{ width:290px; flex-shrink:0; background:#1a2332; display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; z-index:100; overflow-y:auto; overflow-x:hidden; }}
           .sidebar-brand {{ padding:22px 20px 18px; border-bottom:1px solid rgba(255,255,255,0.07); }}
@@ -2056,7 +2128,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
           .sidebar-user-name {{ font-size:15px; font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
           .sidebar-user-role {{ font-size:11px; color:#8b9ab0; margin-top:2px; }}
           /* ── Watermarks ── */
-          .page-bg-watermark {{ position:fixed; top:-80px; right:-100px; width:900px; pointer-events:none; opacity:0.13; z-index:0; transform:scaleX(-1); }}
+          .page-bg-watermark {{ position:fixed; top:-60px; right:-80px; width:900px; pointer-events:none; opacity:0.15; z-index:0; }}
           .page-bg-watermark-2 {{ position:fixed; bottom:-80px; right:-60px; width:700px; pointer-events:none; opacity:0.11; z-index:0; transform:rotate(-15deg); }}
           .sidebar-watermark {{ position:absolute; bottom:40px; right:-40px; width:310px; pointer-events:none; opacity:0.12; transform:scaleX(-1) rotate(20deg); }}
           /* ── Page title ── */
@@ -2068,19 +2140,19 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
           .card, .panel {{ position:relative; z-index:2; }}
           .hero {{ position:relative; z-index:2; }}
           @media (max-width:700px) {{ .sidebar {{ display:none; }} .page-wrapper {{ margin-left:0; }} }}
-          h1 {{ font-size: 20px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.3; }}
-          h2 {{ font-size: 15px; font-weight: 600; letter-spacing: -0.1px; line-height: 1.4; }}
+          h1 {{ font-size: 22px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.3; }}
+          h2 {{ font-size: 16px; font-weight: 600; letter-spacing: -0.1px; line-height: 1.4; }}
           p {{ margin: 0; }}
           .card {{ background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); }}
           .panel {{ background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: 20px; }}
           .hero {{ background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: 24px 28px; }}
           .grid {{ display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }}
           .stack {{ display: flex; flex-direction: column; gap: 10px; }}
-          label {{ display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 500; }}
-          input, select {{ font: inherit; font-size: 14px; padding: 8px 11px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); transition: border-color .15s, box-shadow .15s; outline: none; width: 100%; }}
+          label {{ display: flex; flex-direction: column; gap: 5px; font-size: 14px; font-weight: 500; }}
+          input, select {{ font: inherit; font-size: 15px; padding: 8px 11px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); transition: border-color .15s, box-shadow .15s; outline: none; width: 100%; }}
           input:focus, select:focus {{ border-color: var(--accent); box-shadow: 0 0 0 3px rgba(224,96,32,0.12); }}
           input[type="file"] {{ padding: 6px 10px; cursor: pointer; background: var(--surface-2); }}
-          button {{ font: inherit; font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: var(--radius); border: none; cursor: pointer; transition: background .15s; background: var(--accent); color: #fff; }}
+          button {{ font: inherit; font-size: 14px; font-weight: 600; padding: 8px 16px; border-radius: var(--radius); border: none; cursor: pointer; transition: background .15s; background: var(--accent); color: #fff; }}
           button:hover {{ background: var(--accent-dark); }}
           .danger-button {{ background: #dc2626 !important; }}
           .danger-button:hover {{ background: #b91c1c !important; }}
@@ -2101,8 +2173,8 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
           .collapsible-panel > summary {{ list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; }}
           .collapsible-panel > summary::-webkit-details-marker {{ display: none; }}
           .summary-name {{ display: flex; flex-direction: column; gap: 2px; min-width: 0; }}
-          .summary-name strong {{ font-size: 14px; font-weight: 600; }}
-          .summary-name small {{ font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }}
+          .summary-name strong {{ font-size: 15px; font-weight: 600; }}
+          .summary-name small {{ font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }}
           .summary-button {{ background: var(--accent-light); color: var(--accent); border-radius: 999px; padding: 5px 12px; font-size: 12px; font-weight: 600; white-space: nowrap; border: 1px solid #f0d4c5; }}
           .user-row-body {{ display: grid; gap: 1px; background: var(--border); border-top: 1px solid var(--border); grid-template-columns: repeat(4, minmax(0, 1fr)); }}
           .control-panel {{ background: var(--surface-2); padding: 16px; min-width: 0; }}
@@ -2140,18 +2212,12 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
         </style>
       </head>
       <body>
-        <img class="page-bg-watermark" src="/static/mariposa.png" alt="">
-        <img class="page-bg-watermark-2" src="/static/mariposa.png" alt="">
+        <img class="page-bg-watermark" src="/static/nuevamariposa.png" alt="">
+
         <aside class="sidebar">
           <div class="sidebar-brand">
-            <div class="sidebar-brand-logo">
-              <svg width="32" height="28" viewBox="0 0 80 64" fill="none" xmlns="http://www.w3.org/2000/svg"><ellipse cx="20" cy="22" rx="19" ry="14" fill="#d1145a" transform="rotate(-20 20 22)"/><ellipse cx="14" cy="36" rx="12" ry="8" fill="#d1145a" opacity=".7" transform="rotate(15 14 36)"/><ellipse cx="60" cy="22" rx="19" ry="14" fill="#f06b35" transform="rotate(20 60 22)"/><ellipse cx="66" cy="36" rx="12" ry="8" fill="#f06b35" opacity=".7" transform="rotate(-15 66 36)"/><ellipse cx="40" cy="32" rx="3.5" ry="18" fill="#1a2332"/><circle cx="40" cy="13" r="3" fill="#1a2332"/><line x1="40" y1="10" x2="30" y2="4" stroke="#1a2332" stroke-width="1.5" stroke-linecap="round"/><line x1="40" y1="10" x2="50" y2="4" stroke="#1a2332" stroke-width="1.5" stroke-linecap="round"/></svg>
-              <div class="sidebar-brand-text">
-                <div class="sidebar-brand-name">Casa Monarca</div>
-                <div class="sidebar-brand-sub">Gestor de Identidades</div>
-              </div>
-            </div>
-            <p class="sidebar-tagline">Ayuda Humanitaria al Migrante, A.B.P.</p>
+            <img src="/static/Logoenblanco.png" alt="Casa Monarca" style="width:100%;max-width:200px;height:auto;display:block;margin:0 auto 6px;">
+            <p class="sidebar-tagline" style="text-align:center;">Gestor de Identidades</p>
           </div>
           <div class="sidebar-user">
             <div class="sidebar-avatar">{_initials}</div>
