@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     app_port: int = Field(default=8000, validation_alias=AliasChoices("APP_PORT", "PORT"))
     environment: str = "development"
     database_url: str = DEFAULT_DATABASE_URL
+    database_encryption_key: str = ""
     certs_dir: Path = DEFAULT_CERTS_DIR
     session_secret: str = DEFAULT_SESSION_SECRET
     session_cookie_secure: bool | None = None
