@@ -758,10 +758,10 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
     .field-label{{font-size:13px;font-weight:600;color:#1a2332;display:flex;flex-direction:column;gap:4px;}}
     .field-hint{{font-size:11px;font-weight:400;color:#9ca3af;}}
     .input-wrap{{position:relative;display:flex;align-items:center;}}
-    .input-wrap svg{{position:absolute;left:13px;color:#9ca3af;pointer-events:none;flex-shrink:0;}}
-    .input-wrap input{{font:inherit;font-size:14px;width:100%;padding:11px 13px 11px 38px;border-radius:10px;border:1.5px solid #e5ddd3;background:#fff;color:#1a2332;outline:none;transition:border-color .15s,box-shadow .15s;}}
+    .input-wrap > svg{{position:absolute;left:13px;color:#9ca3af;pointer-events:none;flex-shrink:0;}}
+    .input-wrap input{{font:inherit;font-size:14px;width:100%;padding:11px 44px 11px 38px;border-radius:10px;border:1.5px solid #e5ddd3;background:#fff;color:#1a2332;outline:none;transition:border-color .15s,box-shadow .15s;}}
     .input-wrap input:focus{{border-color:#e06020;box-shadow:0 0 0 3px rgba(224,96,32,.1);}}
-    .eye-btn{{position:absolute;right:12px;background:none;border:none;cursor:pointer;color:#9ca3af;padding:2px;display:flex;align-items:center;}}
+    .eye-btn{{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#9ca3af;padding:4px;display:flex;align-items:center;}}
     .eye-btn:hover{{color:#1a2332;}}
     /* ── File drop zone ── */
     .file-zone{{position:relative;display:flex;align-items:center;gap:14px;border:1.5px solid #f0d4c5;border-radius:10px;padding:13px 16px;cursor:pointer;background:#fff8f5;transition:border-color .15s,background .15s;overflow:hidden;}}
