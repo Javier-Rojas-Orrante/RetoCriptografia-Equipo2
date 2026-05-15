@@ -656,7 +656,7 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
     /* ── Branding panel (LEFT) ── */
     .ll{{flex:1;position:relative;display:flex;flex-direction:column;justify-content:space-between;padding:48px 52px;overflow:hidden;min-width:0;z-index:1;}}
     .ll-inner{{display:flex;flex-direction:column;justify-content:space-between;height:100%;gap:40px;}}
-    .ll-logo{{height:68px;width:auto;display:block;}}
+    .ll-logo{{height:100px;width:auto;display:block;}}
     .ll-sub{{font-size:11px;font-weight:600;color:#8b9ab0;text-transform:uppercase;letter-spacing:.12em;margin-top:10px;}}
     .ll-line{{width:36px;height:3px;background:#e06020;border-radius:2px;margin:24px 0;}}
     .ll-hero{{font-size:34px;font-weight:800;color:#fff;line-height:1.2;letter-spacing:-.5px;max-width:380px;}}
