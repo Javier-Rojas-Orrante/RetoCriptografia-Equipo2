@@ -651,12 +651,11 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
-    body{{font-family:'Inter',system-ui,sans-serif;font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;background:#111827;}}
-    /* ── Left panel ── */
-    .ll{{flex:1;position:relative;display:flex;flex-direction:column;justify-content:space-between;padding:48px 52px;overflow:hidden;min-width:0;}}
-    .ll-bg{{position:absolute;inset:0;background:url('/static/CM5.jpeg') center/cover no-repeat;opacity:.4;}}
-    .ll-overlay{{position:absolute;inset:0;background:linear-gradient(135deg,rgba(17,24,39,.85) 0%,rgba(17,24,39,.5) 100%);}}
-    .ll-inner{{position:relative;z-index:1;display:flex;flex-direction:column;justify-content:space-between;height:100%;gap:40px;}}
+    body{{font-family:'Inter',system-ui,sans-serif;font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;background:url('/static/CM5.jpeg') center/cover no-repeat fixed;position:relative;}}
+    .page-overlay{{position:fixed;inset:0;z-index:0;background:linear-gradient(to right,rgba(10,14,23,.95) 0%,rgba(10,14,23,.80) 45%,rgba(10,14,23,.50) 72%,rgba(10,14,23,.25) 100%);pointer-events:none;}}
+    /* ── Branding panel (LEFT) ── */
+    .ll{{flex:1;position:relative;display:flex;flex-direction:column;justify-content:space-between;padding:48px 52px;overflow:hidden;min-width:0;z-index:1;}}
+    .ll-inner{{display:flex;flex-direction:column;justify-content:space-between;height:100%;gap:40px;}}
     .ll-logo{{height:68px;width:auto;display:block;}}
     .ll-sub{{font-size:11px;font-weight:600;color:#8b9ab0;text-transform:uppercase;letter-spacing:.12em;margin-top:10px;}}
     .ll-line{{width:36px;height:3px;background:#e06020;border-radius:2px;margin:24px 0;}}
@@ -668,9 +667,9 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
     .ll-sc-sub{{font-size:12px;color:#8b9ab0;margin-top:2px;line-height:1.5;}}
     .ll-footer{{font-size:12px;color:#4a5568;margin-top:auto;padding-top:24px;display:flex;align-items:center;gap:6px;}}
     @media(max-width:860px){{.ll{{display:none;}}}}
-    /* ── Right panel ── */
-    .lr{{width:480px;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:32px 28px;background:rgba(255,255,255,.03);}}
-    @media(max-width:860px){{.lr{{width:100%;background:#f6f2ec;}}}}
+    /* ── Card panel (RIGHT ~3/4) ── */
+    .lr{{width:460px;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:32px 36px;position:relative;z-index:1;}}
+    @media(max-width:860px){{.lr{{width:100%;}}}}
     /* ── Card ── */
     .card{{background:#fff;border-radius:18px;box-shadow:0 8px 40px rgba(0,0,0,.22),0 2px 8px rgba(0,0,0,.12);padding:32px 32px 28px;width:100%;max-width:420px;}}
     .card-hdr{{display:flex;align-items:flex-start;gap:14px;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid #f0ebe4;}}
@@ -709,10 +708,9 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
   </style>
 </head>
 <body>
-  <!-- Left panel -->
+  <div class="page-overlay"></div>
+  <!-- Branding panel (LEFT) -->
   <div class="ll">
-    <div class="ll-bg"></div>
-    <div class="ll-overlay"></div>
     <div class="ll-inner">
       <div>
         <img src="/static/Logoenblanco.png" alt="Casa Monarca" class="ll-logo">
@@ -735,8 +733,7 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
       </p>
     </div>
   </div>
-
-  <!-- Right panel -->
+  <!-- Card panel (RIGHT) -->
   <div class="lr">
     <div class="card">
       <div class="card-hdr">
