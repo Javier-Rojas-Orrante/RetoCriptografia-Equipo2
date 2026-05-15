@@ -540,6 +540,26 @@ class SchemaService:
                     if column_name not in current_columns:
                         connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"))
 
+    @staticmethod
+    def ensure_lookup_indexes() -> None:
+        inspector = inspect(engine)
+        table_names = set(inspector.get_table_names())
+
+        if engine.dialect.name == "postgresql":
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+                for index_name, table_name, column_name, is_unique in SchemaService.lookup_indexes:
+                    if table_name not in table_names:
+                        continue
+                    uniqueness = "UNIQUE " if is_unique else ""
+                    connection.execute(
+                        text(
+                            f"CREATE {uniqueness}INDEX CONCURRENTLY IF NOT EXISTS {index_name} "
+                            f"ON {table_name} ({column_name})"
+                        )
+                    )
+            return
+
+        with engine.begin() as connection:
             for index_name, table_name, column_name, is_unique in SchemaService.lookup_indexes:
                 if table_name not in table_names:
                     continue
@@ -848,6 +868,7 @@ class SchemaService:
         cls.ensure_lookup_columns()
         cls.widen_encrypted_columns()
         cls.migrate_plaintext_rows(encrypt_payload=encrypt_payload)
+        cls.ensure_lookup_indexes()
 
     @classmethod
     def prepare_runtime_schema(cls) -> None:
