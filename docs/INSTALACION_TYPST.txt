@@ -1,0 +1,1004 @@
+﻿// ============================================================================
+// MANUAL DE USUARIO — Gestor de Identidades Casa Monarca
+// Formato: Typst, 10pt, Arial (equivalente), Carta, márgenes 20mm/25mm
+// ============================================================================
+
+#set document(
+  title: "Manual de Usuario — Gestor de Identidades v1.0",
+  author: "Equipo 2",
+)
+
+#set page(
+  paper: "us-letter",
+  margin: (top: 20mm, bottom: 20mm, left: 25mm, right: 25mm),
+  header: context {
+    if counter(page).get().first() > 1 {
+      set text(size: 8pt, fill: rgb("#6b7280"))
+      grid(
+        columns: (1fr, 1fr),
+        align(left)[Manual de Usuario — Gestor de Identidades v1.0],
+        align(right)[Casa Monarca],
+      )
+      line(length: 100%, stroke: 0.4pt + rgb("#6b7280"))
+    }
+  },
+  numbering: "1",
+)
+
+#set text(
+  font: "Roboto",
+  size: 10pt,
+  fill: rgb("#1a2332"),
+)
+
+#set par(
+  leading: 5pt,
+  spacing: 10pt,
+  first-line-indent: 0pt,
+)
+
+#set heading(numbering: "1.1.")
+
+#show heading.where(level: 1): it => {
+  pagebreak(weak: true)
+  v(8pt)
+  text(size: 18pt, weight: "bold", fill: rgb("#002f6c"))[#it]
+  v(12pt)
+}
+
+#show heading.where(level: 2): it => {
+  v(12pt)
+  text(size: 14pt, weight: "bold", fill: rgb("#002f6c"))[#it]
+  v(6pt)
+}
+
+#show heading.where(level: 3): it => {
+  v(8pt)
+  text(size: 12pt, weight: "bold", fill: rgb("#1a2332"))[#it]
+  v(4pt)
+}
+
+// ── Funciones auxiliares para cajas ──────────────────────────────────────────
+
+#let infobox(title: "", body) = {
+  block(
+    width: 100%,
+    inset: 12pt,
+    radius: 4pt,
+    stroke: 0.5pt + rgb("#002f6c"),
+    fill: rgb("#e8f0fe"),
+  )[
+    #text(weight: "bold", fill: rgb("#002f6c"))[#title] \
+    #body
+  ]
+}
+
+#let warningbox(title: "", body) = {
+  block(
+    width: 100%,
+    inset: 12pt,
+    radius: 4pt,
+    stroke: 0.5pt + rgb("#e06020"),
+    fill: rgb("#fff5ee"),
+  )[
+    #text(weight: "bold", fill: rgb("#e06020"))[#title] \
+    #body
+  ]
+}
+
+#let successbox(title: "", body) = {
+  block(
+    width: 100%,
+    inset: 12pt,
+    radius: 4pt,
+    stroke: 0.5pt + rgb("#2e7d32"),
+    fill: rgb("#e8f5e9"),
+  )[
+    #text(weight: "bold", fill: rgb("#2e7d32"))[#title] \
+    #body
+  ]
+}
+
+// ============================================================================
+// PORTADA
+// ============================================================================
+
+#page(numbering: none, header: none)[
+  #align(center)[
+    #v(1cm)
+
+    // INSTRUCCIÓN: Reemplaza con la imagen real del escudo del Tec
+    // #image("escudo_tec.png", width: 4cm)
+    #text(size: 16pt, weight: "bold", fill: rgb("#002f6c"))[\[Escudo del Instituto\]]
+    #v(0.2cm)
+    #text(size: 9pt, fill: rgb("#6b7280"))[(Insertar imagen: escudo_tec.png)]
+
+    #v(1.2cm)
+
+    #text(size: 16pt, weight: "bold", fill: rgb("#002f6c"))[
+      Instituto Tecnológico y de Estudios Superiores de Monterrey
+    ]
+
+    #v(0.6cm)
+
+    #text(size: 14pt, weight: "bold")[Escuela de Ingeniería y Ciencias]
+
+    #v(0.3cm)
+
+    #text(size: 13pt)[Ingeniería en Ciencias de Datos y Matemáticas]
+
+    #v(1.5cm)
+
+    #line(length: 100%, stroke: 1.5pt)
+    #v(0.5cm)
+    #text(size: 20pt, weight: "bold", fill: rgb("#1a2332"))[
+      Manual de Usuario \
+      Gestor de Identidades \
+      Versión 1.0
+    ]
+    #v(0.5cm)
+    #line(length: 100%, stroke: 1.5pt)
+
+    #v(1.5cm)
+
+    #text(size: 14pt, weight: "bold")[Equipo 2]
+    #v(0.4cm)
+
+    // INSTRUCCIÓN: Reemplaza con los nombres y matrículas reales
+    #table(
+      columns: (auto, auto),
+      align: (left, left),
+      stroke: none,
+      [Nombre Completo Estudiante 1], [A0XXXXXXX],
+      [Nombre Completo Estudiante 2], [A0XXXXXXX],
+      [Nombre Completo Estudiante 3], [A0XXXXXXX],
+      [Nombre Completo Estudiante 4], [A0XXXXXXX],
+      [Nombre Completo Estudiante 5], [A0XXXXXXX],
+    )
+
+    #v(0.5cm)
+    #text(size: 11pt)[Grupo: \_\_\_\_\_\_\_\_\_\_]
+
+    #v(0.8cm)
+
+    #text(size: 14pt, weight: "bold")[Profesores]
+    #v(0.3cm)
+    // INSTRUCCIÓN: Reemplaza con los nombres reales
+    Nombre del Profesor 1 \
+    Nombre del Profesor 2
+
+    #v(0.8cm)
+
+    #text(size: 14pt, weight: "bold")[Socio Formador]
+    #v(0.2cm)
+    #text(size: 13pt)[Casa Monarca — Centro de Colaboración con Migrantes y Refugiados A.C.]
+
+    #v(1fr)
+
+    Monterrey, Nuevo León \
+    30 de abril de 2023
+  ]
+]
+
+// ============================================================================
+// ÍNDICES
+// ============================================================================
+
+#set page(numbering: "i")
+#counter(page).update(1)
+
+#outline(title: [Índice de Contenidos], indent: auto, depth: 3)
+#pagebreak()
+
+#outline(title: [Índice de Tablas], target: figure.where(kind: table))
+#pagebreak()
+
+#outline(title: [Índice de Figuras], target: figure.where(kind: image))
+#pagebreak()
+
+#set page(numbering: "1")
+#counter(page).update(1)
+
+// ============================================================================
+// CAPÍTULO 1 — INTRODUCCIÓN
+// ============================================================================
+
+= Introducción
+
+== ¿Qué es la aplicación?
+
+El *Gestor de Identidades* es una aplicación web desarrollada para *Casa Monarca --- Centro de Colaboración con Migrantes y Refugiados A.C.* Su propósito es administrar de manera segura las identidades digitales del personal de la organización: quién puede acceder al sistema, qué puede hacer y con qué nivel de confianza criptográfica.
+
+El sistema implementa una *Infraestructura de Clave Pública (PKI)* interna que emite certificados digitales X.509 para los roles de mayor privilegio, mientras que los roles operativos acceden con credenciales tradicionales (correo electrónico y contraseña).
+
+La aplicación está construida con *Python 3.11+*, el framework web *FastAPI*, el ORM *SQLAlchemy* y la biblioteca de criptografía `cryptography` de Python. Puede ejecutarse localmente con SQLite o desplegarse en producción con PostgreSQL y Docker.
+
+== ¿Para qué sirve?
+
+La aplicación resuelve las siguientes necesidades operativas y de seguridad de Casa Monarca:
+
++ *Gestión de usuarios*: Crear, activar, revocar y expirar cuentas del personal con control granular por rol.
++ *Control de acceso basado en roles (RBAC)*: Cuatro niveles de permisos jerárquicos que limitan qué puede hacer cada tipo de usuario en el sistema.
++ *Autenticación criptográfica*: Los roles privilegiados (Administrador y Coordinador) se autentican mediante archivos criptográficos (`private_key.pem` + `certificate.pem` + contraseña), proporcionando autenticación de dos factores.
++ *Emisión de certificados digitales*: Generación de certificados X.509 firmados con RSA-2048 y SHA-256, siguiendo una cadena de confianza verificable.
++ *Registro de beneficiarios*: Sistema CRUD para el seguimiento de personas migrantes atendidas por la organización, organizado por áreas (Legal, Psicosocial, Humanitario, Administración, Comunicación).
++ *Auditoría completa*: Registro inmutable de todas las acciones realizadas en el sistema, incluyendo inicios de sesión, cambios de estado, emisión de certificados y accesos denegados.
++ *Recuperación de emergencia*: Mecanismo de administrador espejo (backup) que garantiza la continuidad operativa si el administrador principal pierde acceso.
++ *Generación de reportes*: Exportación de datos en PDF con hash de integridad SHA-256 embebido para detectar manipulaciones.
+
+== ¿A quién va dirigida?
+
+La aplicación está diseñada para el personal de Casa Monarca, dividido en cuatro roles funcionales:
+
+#figure(
+  table(
+    columns: (auto, auto, 1fr),
+    align: (left, left, left),
+    stroke: 0.5pt + rgb("#e5ddd3"),
+    fill: (_, row) => if row == 0 { rgb("#1a2332") } else if calc.odd(row) { rgb("#faf7f3") } else { white },
+    table.header(
+      text(fill: white, weight: "bold")[Rol],
+      text(fill: white, weight: "bold")[Método de acceso],
+      text(fill: white, weight: "bold")[Descripción y capacidades],
+    ),
+    [Administrador], [Archivos criptográficos], [Director de TI o encargado de seguridad. Control total: gestión de usuarios, emisión de certificados, auditoría, recuperación de emergencia.],
+    [Coordinador], [Archivos criptográficos], [Coordinadores de área (Legal, Psicosocial, Humanitario, etc.). Gestión de beneficiarios de su área, visualización de documentos y operaciones.],
+    [Operativo], [Correo + contraseña], [Personal operativo de campo. Registro de beneficiarios, consulta de documentos y operaciones.],
+    [Voluntario], [Correo + contraseña], [Voluntarios y pasantes. Acceso limitado a consulta de documentos y registro básico de beneficiarios.],
+  ),
+  caption: [Usuarios objetivo del sistema y sus características de acceso],
+) <tab-usuarios-objetivo>
+
+// ============================================================================
+// CAPÍTULO 2 — REQUERIMIENTOS DEL SISTEMA
+// ============================================================================
+
+= Requerimientos del Sistema
+
+== Hardware mínimo
+
+#figure(
+  table(
+    columns: (auto, 1fr),
+    align: (left, left),
+    stroke: 0.5pt + rgb("#e5ddd3"),
+    fill: (_, row) => if row == 0 { rgb("#1a2332") } else if calc.odd(row) { rgb("#faf7f3") } else { white },
+    table.header(
+      text(fill: white, weight: "bold")[Componente],
+      text(fill: white, weight: "bold")[Requisito mínimo],
+    ),
+    [Procesador], [Intel Core i3 / AMD Ryzen 3 o superior (arquitectura x86_64)],
+    [Memoria RAM], [2 GB mínimo (4 GB recomendado para uso concurrente)],
+    [Disco duro], [500 MB de espacio libre (sin contar la base de datos)],
+    [Red], [Conexión a Internet para despliegue remoto, o red local para acceso interno],
+  ),
+  caption: [Requerimientos mínimos de hardware para el servidor],
+) <tab-hw-minimo>
+
+#infobox(title: "Nota sobre clientes")[
+  Para *acceder como usuario* desde un navegador, cualquier computadora, tableta o teléfono moderno es suficiente. Los requerimientos de hardware aplican únicamente al *servidor* donde se instala y ejecuta la aplicación.
+]
+
+== Software necesario
+
+#figure(
+  table(
+    columns: (auto, auto, 1fr),
+    align: (left, left, left),
+    stroke: 0.5pt + rgb("#e5ddd3"),
+    fill: (_, row) => if row == 0 { rgb("#1a2332") } else if calc.odd(row) { rgb("#faf7f3") } else { white },
+    table.header(
+      text(fill: white, weight: "bold")[Software],
+      text(fill: white, weight: "bold")[Versión mínima],
+      text(fill: white, weight: "bold")[Propósito],
+    ),
+    [Python], [3.11+], [Lenguaje de ejecución del servidor],
+    [pip], [23.0+], [Gestor de paquetes de Python],
+    [Git], [2.30+], [Clonar el repositorio del proyecto],
+    [Docker (opc.)], [20.0+], [Despliegue alternativo con contenedores],
+    [PostgreSQL (opc.)], [14+], [Base de datos recomendada para producción],
+  ),
+  caption: [Software requerido para la instalación del servidor],
+) <tab-sw-necesario>
+
+=== Navegadores compatibles (clientes)
+
+#figure(
+  table(
+    columns: (auto, auto, 1fr),
+    align: (left, left, left),
+    stroke: 0.5pt + rgb("#e5ddd3"),
+    fill: (_, row) => if row == 0 { rgb("#1a2332") } else if calc.odd(row) { rgb("#faf7f3") } else { white },
+    table.header(
+      text(fill: white, weight: "bold")[Navegador],
+      text(fill: white, weight: "bold")[Versión mínima],
+      text(fill: white, weight: "bold")[Notas],
+    ),
+    [Google Chrome], [90+], [Recomendado],
+    [Mozilla Firefox], [88+], [Compatible],
+    [Microsoft Edge], [90+], [Compatible],
+    [Safari], [14+], [Compatible (macOS/iOS)],
+  ),
+  caption: [Navegadores web compatibles para los usuarios finales],
+) <tab-navegadores>
+
+== Versiones compatibles y dependencias del proyecto
+
+#figure(
+  table(
+    columns: (auto, auto, 1fr),
+    align: (left, left, left),
+    stroke: 0.5pt + rgb("#e5ddd3"),
+    fill: (_, row) => if row == 0 { rgb("#1a2332") } else if calc.odd(row) { rgb("#faf7f3") } else { white },
+    table.header(
+      text(fill: white, weight: "bold")[Paquete],
+      text(fill: white, weight: "bold")[Versión],
+      text(fill: white, weight: "bold")[Función en el sistema],
+    ),
+    [`fastapi`], [≥ 0.115.0], [Framework web asíncrono para las rutas HTTP],
+    [`cryptography`], [≥ 43.0.0], [RSA, X.509, firmas digitales, cifrado de llaves],
+    [`itsdangerous`], [≥ 2.2.0], [Firmado HMAC de cookies de sesión],
+    [`uvicorn`], [≥ 0.30.0], [Servidor ASGI para ejecutar FastAPI],
+    [`python-multipart`], [≥ 0.0.9], [Procesamiento de archivos subidos (login crypto)],
+    [`sqlalchemy`], [≥ 2.0.35], [ORM para la capa de base de datos],
+    [`psycopg[binary]`], [≥ 3.2.0], [Driver nativo para PostgreSQL],
+    [`pydantic-settings`], [≥ 2.5.2], [Configuración tipada con variables de entorno],
+    [`fpdf2`], [≥ 2.7.0], [Generación de reportes en formato PDF],
+  ),
+  caption: [Dependencias del proyecto definidas en `pyproject.toml`],
+) <tab-dependencias>
+
+// ============================================================================
+// CAPÍTULO 3 — INSTALACIÓN
+// ============================================================================
+
+= Instalación
+
+== Opción A: Instalación local (desarrollo)
+
++ *Clonar el repositorio del proyecto.*
+
+  ```bash
+  git clone <URL_DEL_REPOSITORIO>
+  cd RetoCriptografia-Equipo2
+  ```
+
++ *Crear un entorno virtual de Python.*
+
+  ```bash
+  python -m venv venv
+  ```
+
++ *Activar el entorno virtual.*
+
+  En *Windows* (PowerShell):
+
+  ```bash
+  .\venv\Scripts\Activate.ps1
+  ```
+
+  En *Windows* (CMD):
+
+  ```bash
+  venv\Scripts\activate.bat
+  ```
+
+  En *macOS / Linux*:
+
+  ```bash
+  source venv/bin/activate
+  ```
+
++ *Instalar todas las dependencias del proyecto.*
+
+  ```bash
+  pip install -e .
+  ```
+
+  Este comando lee el archivo `pyproject.toml` e instala automáticamente todas las bibliotecas listadas en la @tab-dependencias.
+
++ *Ejecutar el servidor de desarrollo.*
+
+  ```bash
+  uvicorn app.main:app --reload
+  ```
+
+  La bandera `--reload` habilita la recarga automática cuando se modifican archivos (solo para desarrollo).
+
++ *Acceder a la aplicación.* Abrir un navegador web y navegar a:
+
+  ```
+  http://127.0.0.1:8000
+  ```
+
+#successbox(title: "Resultado esperado")[
+  La terminal muestra el mensaje `Uvicorn running on http://127.0.0.1:8000`. Al abrir esa URL en el navegador, aparece la página de inicio de sesión del sistema con el branding de Casa Monarca y el formulario de login.
+]
+
+
+// INSTRUCCIÓN: Descomenta e inserta captura de pantalla real
+// #figure(
+// image("img/terminal_uvicorn.png", width: 85%),
+// caption: [Servidor ejecutándose correctamente en la terminal],
+// ) <fig-terminal>
+
+== Opción B: Instalación con Docker
+
++ *Construir la imagen Docker.*
+
+  ```bash
+  docker build -t gestor-identidades .
+  ```
+
++ *Ejecutar el contenedor.*
+
+  ```bash
+  docker run -p 8000:8000 gestor-identidades
+  ```
+
++ *Acceder* en `http://localhost:8000`.
+
+El `Dockerfile` incluido usa Python 3.11 slim como imagen base y expone el puerto 8000.
+
+== Opción C: Despliegue en Render (producción)
+
+El repositorio incluye un archivo `render.yaml` preconfigurado para despliegue con un clic en la plataforma Render, incluyendo una base de datos PostgreSQL administrada automáticamente.
+
+#warningbox(title: "Consideraciones importantes para producción")[
+  - *Obligatorio*: Definir la variable de entorno `SESSION_SECRET` con un valor aleatorio de al menos 32 bytes. Generar con: `openssl rand -hex 32`. Si no se cambia el valor predeterminado, el servidor *rechaza arrancar*.
+  - Establecer `SEED_DEMO_DATA=false` para no crear usuarios de demostración.
+  - Establecer `ENVIRONMENT=production` para activar las validaciones de seguridad.
+  - Usar PostgreSQL (`DATABASE_URL`) en lugar de SQLite para ambientes multiusuario.
+  - Definir `BOOTSTRAP_ADMIN_EMAIL` y `BOOTSTRAP_ADMIN_PASSWORD` para crear el administrador inicial de producción.
+]
+// ============================================================================
+// CAPÍTULO 4 — INICIO DE LA APLICACIÓN
+// ============================================================================
+
+= Inicio de la Aplicación
+
+== Cómo acceder
+
+Una vez que el servidor está en ejecución, abrir el navegador web y navegar a la URL correspondiente:
+
+- *Desarrollo local*: `http://127.0.0.1:8000`
+- *Producción*: La URL asignada por el proveedor de hosting (ej. `https://mi-app.onrender.com`)
+
+El sistema redirige automáticamente a la página de inicio de sesión (`/login`).
+
+== Inicio de sesión
+
+La página de login se divide visualmente en dos paneles: a la izquierda se muestra el branding de Casa Monarca con la leyenda "Sistema de gestión de identidades y accesos"; a la derecha se presenta el formulario de autenticación con zonas de carga de archivos para el login criptográfico y campos para correo/contraseña.
+
+// INSTRUCCIÓN: Descomenta e inserta captura real
+// #figure(
+// image("img/login_page.png", width: 90%),
+// caption: [Página de inicio de sesión del sistema],
+// ) <fig-login>
+
+=== Login por contraseña (Operativo / Voluntario)
+
++ Ingresar el *correo electrónico* o *nombre de usuario* en el campo "Correo o usuario".
++ Ingresar la *contraseña* en el campo correspondiente.
++ Hacer clic en el botón *"Entrar"*.
+
+#successbox(title: "Resultado esperado")[
+  Si las credenciales son correctas y la cuenta está activa, el sistema redirige al *Portal del usuario* (`/portal`) donde se muestra la información de la cuenta, credenciales y sección de beneficiarios.
+]
+
+=== Login criptográfico (Administrador / Coordinador)
+
+Los roles privilegiados requieren tres elementos para autenticarse:
+
++ *Subir el archivo de acceso* (`private_key.pem`): Arrastrar o hacer clic en la zona "Archivo de acceso" para seleccionar el archivo.
++ *Subir el certificado de identidad* (`certificate.pem`): Arrastrar o seleccionar el archivo en la zona "Certificado de identidad".
++ Ingresar el *correo electrónico* en el campo "Correo o usuario".
++ Ingresar la *contraseña* que protege el archivo de acceso.
++ Hacer clic en el botón *"Entrar"*.
+
+#infobox(title: "¿Qué verifica el sistema internamente?")[
+  El servidor realiza las siguientes verificaciones criptográficas:
+  + Descifra la llave privada usando la contraseña proporcionada.
+  + Verifica que el certificado fue emitido por la autoridad correcta (autofirmado para Admin, firmado por el Admin para Coordinador).
+  + Valida la vigencia, el número de serie y el email del certificado.
+  + Genera un desafío criptográfico (_challenge_) único con timestamp.
+  + Firma el desafío con la llave privada y verifica la firma con la llave pública del certificado.
+  + Si todas las verificaciones pasan, crea la sesión.
+]
+=== Credenciales de demostración
+
+Cuando `SEED_DEMO_DATA=true` (valor por defecto en desarrollo), el sistema crea automáticamente usuarios de prueba:
+
+#figure(
+table(
+columns: (auto, auto, auto, 1fr),
+align: (left, left, left, left),
+stroke: 0.5pt + rgb("#e5ddd3"),
+fill: (_, row) => if row == 0 { rgb("#1a2332") } else if calc.odd(row) { rgb("#faf7f3") } else { white },
+table.header(
+text(fill: white, weight: "bold")[Usuario / Email],
+text(fill: white, weight: "bold")[Contraseña],
+text(fill: white, weight: "bold")[Rol],
+text(fill: white, weight: "bold")[Método de login],
+),
+[admin], [admin], [Administrador], [Bypass demo (solo contraseña)],
+[operativo\@demo.local], [demo1234], [Operativo], [Contraseña],
+[voluntario\@demo.local], [demo1234], [Voluntario], [Contraseña],
+[coord.legal\@demo.local], [demo1234], [Coordinador], [Contraseña (sin cert)],
+[coord.administracion\@demo.local], [demo1234], [Coordinador], [Contraseña (sin cert)],
+[coord.psicosocial\@demo.local], [demo1234], [Coordinador], [Contraseña (sin cert)],
+[coord.humanitario\@demo.local], [demo1234], [Coordinador], [Contraseña (sin cert)],
+[coord.comunicacion\@demo.local], [demo1234], [Coordinador], [Contraseña (sin cert)],
+),
+caption: [Credenciales de demostración disponibles],
+) <tab-credenciales-demo>
+
+#warningbox(title: "Importante")[
+  El acceso `admin` / `admin` es un *bypass exclusivo para demostración*. En producción (`SEED_DEMO_DATA=false`), se desactiva automáticamente y el administrador debe autenticarse con sus archivos criptográficos.
+]
+
+== Configuración inicial
+
+Al arrancar por primera vez, el sistema ejecuta automáticamente los siguientes pasos de inicialización:
+
++ Crea todas las tablas necesarias en la base de datos (`users`, `roles`, `permissions`, `role_permissions`, `audit_logs`, `system_secrets`, `notifications`, `beneficiarios`).
++ Genera los cuatro roles del sistema (Administrador, Coordinador, Operativo, Voluntario) con sus permisos específicos.
++ Si `SEED_DEMO_DATA=true`, crea los usuarios de demostración listados en la @tab-credenciales-demo.
++ Si se definen `BOOTSTRAP_ADMIN_EMAIL` y `BOOTSTRAP_ADMIN_PASSWORD`, crea el administrador de producción con esas credenciales.
++ Genera la Autoridad Certificadora (CA) interna: un par de llaves RSA-2048 y un certificado raíz autofirmado válido por 10 años.
++ Crea y sincroniza el administrador espejo (cuenta de respaldo de emergencia).
++ Emite certificados criptográficos para los usuarios demo que requieren criptografía.
+
+No se requiere configuración manual adicional para comenzar a usar el sistema en modo desarrollo.
+
+// ============================================================================
+// CAPÍTULO 5 — GUÍA DE USO
+// ============================================================================
+
+= Guía de Uso
+
+Esta guía organiza las tareas principales del sistema por tipo de acción. Cada tarea incluye los pasos detallados, un ejemplo práctico y el resultado esperado.
+
+== Crear un nuevo usuario (Administrador)
+
+*Requisito*: Sesión activa como Administrador.
+
+*Pasos*:
+
++ Navegar al *Panel de administración* haciendo clic en "Panel de administración" en la barra lateral, o directamente a `/dashboard`.
++ Localizar la sección "Crear usuario" o navegar a `/admin/register`.
++ Completar el formulario con los siguientes campos:
+  - *Nombre completo*: Nombre y apellidos del nuevo usuario.
+  - *Correo electrónico*: Dirección de email institucional (debe ser única en el sistema).
+  - *Rol*: Seleccionar entre Administrador, Coordinador, Operativo o Voluntario.
+  - *Fecha de expiración* (opcional): Fecha hasta la cual la cuenta será válida. Si se deja vacía, se asignan 365 días para roles criptográficos.
+  - *Contraseña*: Contraseña inicial del usuario.
++ Hacer clic en el botón *"Crear usuario"*.
+
+*Ejemplo*: Crear al coordinador legal "María García" con email `maria.garcia\@casamonarca.org`, rol "Coordinador" y contraseña "Cr1pt0Segura!".
+
+#successbox(title: "Resultado esperado")[
+  El usuario se crea en estado "pending" (pendiente de activación). Si el rol seleccionado es Administrador o Coordinador, se generan automáticamente el certificado X.509 y la llave privada cifrada con la contraseña proporcionada. El administrador debe activar la cuenta antes de que el usuario pueda iniciar sesión.
+]
+
+#infobox(title: "Nota técnica")[
+  La contraseña proporcionada en este paso se usa para dos propósitos: (1) como contraseña de acceso si el rol no requiere criptografía, y (2) como contraseña para cifrar la llave privada (`private_key.pem`) si el rol requiere criptografía.
+]
+
+// INSTRUCCIÓN: Descomenta e inserta captura real
+// #figure(
+// image("img/crear_usuario.png", width: 85%),
+// caption: [Formulario de creación de usuario en el panel de administración],
+// ) <fig-crear-usuario>
+
+== Activar un usuario pendiente (Administrador)
+
+*Requisito*: Sesión activa como Administrador. Usuario objetivo en estado "pending".
+
+*Pasos*:
+
++ En el *Panel de administración*, localizar al usuario con estado "pending" en la lista.
++ Expandir la fila del usuario haciendo clic sobre ella.
++ Hacer clic en el botón *"Activar"*.
++ Si el usuario tiene rol criptográfico, se solicitará una contraseña para proteger el material criptográfico regenerado.
+
+*Ejemplo*: Activar la cuenta de "María García" que fue creada en el paso anterior.
+
+#successbox(title: "Resultado esperado")[
+  El estado del usuario cambia de "pending" a "active". El usuario ya puede iniciar sesión. Se registra un evento de auditoría de tipo `user_status_updated` con resultado "success".
+]
+
+== Revocar un usuario (Administrador)
+
+*Requisito*: Sesión activa como Administrador.
+
+*Pasos*:
+
++ En el *Panel de administración*, localizar al usuario activo que se desea revocar.
++ Expandir su fila.
++ Hacer clic en el botón *"Revocar"*.
++ Confirmar la acción.
+
+*Ejemplo*: Revocar el acceso de un voluntario que terminó su servicio.
+
+#successbox(title: "Resultado esperado")[
+  El estado del usuario cambia a "revoked". El usuario no puede iniciar sesión. Su certificado X.509, si tiene uno, deja de ser aceptado. Se genera el registro de auditoría correspondiente.
+]
+
+== Emitir credenciales criptográficas (Administrador)
+
+*Requisito*: Sesión activa como Administrador. Usuario objetivo con rol Admin o Coordinador.
+
+*Pasos*:
+
++ En el *Panel de administración*, localizar al usuario.
++ Expandir su fila y localizar la sección "Credencial".
++ Ingresar una contraseña que protegerá el archivo de acceso del usuario.
++ Hacer clic en *"Emitir credencial"* (primera vez) o *"Reemitir"* (si ya existían credenciales previas).
+
+*Ejemplo*: Emitir credenciales para "María García" (Coordinador Legal) con la contraseña "AccesoLegal2023".
+
+#successbox(title: "Resultado esperado")[
+  Se generan los siguientes archivos para el usuario:
+  - `certificate.pem` --- Certificado digital X.509 firmado por el administrador activo. Es público y puede descargarse múltiples veces.
+  - `private_key.pem` --- Llave privada RSA-2048 cifrada con AES-256 usando la contraseña proporcionada. *Descarga única*: se elimina del servidor tras la primera descarga.
+]
+
+#warningbox(title: "Descarga única del archivo de acceso")[
+  El archivo `private_key.pem` solo puede descargarse *una sola vez*. Después de la primera descarga, el servidor lo elimina permanentemente de la base de datos por seguridad. Si se pierde el archivo, el administrador debe reemitir las credenciales completas, lo que invalida automáticamente las anteriores.
+]
+
+== Descargar archivos criptográficos
+
+=== Descargar el archivo de acceso (private_key.pem)
+
+*Pasos*:
+
++ El administrador navega al usuario en el dashboard, o el propio usuario navega a su portal (`/portal`).
++ En la sección "Mis credenciales" (portal) o en la fila del usuario (dashboard), hacer clic en *"Descargar archivo de acceso"*.
++ El navegador descarga automáticamente el archivo.
+
+#warningbox(title: "Advertencia crítica")[
+  Este enlace funciona *una sola vez*. Después de hacer clic, el estado cambia a "Archivo de acceso entregado" y la descarga no puede repetirse. Guardar el archivo en un lugar seguro y protegido.
+]
+
+=== Descargar el certificado (certificate.pem)
+
+*Pasos*:
+
++ Navegar al portal del usuario o al detalle del usuario en el dashboard.
++ Hacer clic en *"Descargar certificado"* o *"Ver certificado de identidad"*.
++ El navegador descarga el archivo `certificate.pem`.
+
+#infobox(title: "Nota")[
+  El certificado es un documento público. Contiene solo la llave pública y la identidad del usuario. Puede descargarse múltiples veces sin restricción. La información sensible es únicamente el archivo de acceso (llave privada).
+]
+
+== Registrar un beneficiario
+
+*Requisito*: Sesión activa con cualquier rol.
+
+*Pasos*:
+
++ En el *Portal* (`/portal`), navegar a la sección "Beneficiarios".
++ Completar el formulario de registro:
+  - *Nombre completo*: Nombre de la persona migrante atendida.
+  - *País de origen*: País de procedencia de la persona.
+  - *Área*: Seleccionar el área de atención: Administración, Legal, Psicosocial, Humanitario o Comunicación.
+  - *Notas* (opcional): Información adicional relevante para el caso.
++ Hacer clic en *"Registrar beneficiario"*.
+
+*Ejemplo*: Registrar a "Juan Pérez López", de Honduras, en el área Legal, con nota "Requiere asesoría para solicitud de refugio".
+
+#successbox(title: "Resultado esperado")[
+  El beneficiario se registra con estado "nuevo" y aparece en la lista. Los Coordinadores y Administradores pueden actualizar su estado conforme avanza la atención, siguiendo el flujo: *nuevo* → *en_revisión* → *canalizado* → *activo*.
+]
+
+== Cambiar el estado de un beneficiario (Coordinador / Administrador)
+
+*Pasos*:
+
++ En la sección "Beneficiarios" del portal, localizar al beneficiario en la tabla.
++ Seleccionar el nuevo estado en el menú desplegable junto al registro.
++ Hacer clic en *"Actualizar"*.
+
+*Ejemplo*: Cambiar el estado de "Juan Pérez López" de "nuevo" a "en_revisión" después de la primera entrevista.
+
+#successbox(title: "Resultado esperado")[
+  El estado del beneficiario se actualiza en la base de datos y se refleja inmediatamente en la tabla.
+]
+
+== Generar reportes en PDF
+
+El sistema permite exportar tres tipos de reportes, cada uno con un hash SHA-256 de integridad:
+
+#figure(
+table(
+columns: (auto, auto, auto, 1fr),
+align: (left, left, left, left),
+stroke: 0.5pt + rgb("#e5ddd3"),
+fill: (_, row) => if row == 0 { rgb("#1a2332") } else if calc.odd(row) { rgb("#faf7f3") } else { white },
+table.header(
+text(fill: white, weight: "bold")[Reporte],
+text(fill: white, weight: "bold")[Ruta],
+text(fill: white, weight: "bold")[Acceso],
+text(fill: white, weight: "bold")[Contenido],
+),
+[Usuarios], [/ui/users/export.pdf], [Admin], [Nombre, email, rol, estado, fecha],
+[Auditoría], [/ui/audit-logs/export.pdf], [Admin], [Fecha, tipo, acción, resultado, IP],
+[Beneficiarios], [/ui/beneficiarios/export.pdf], [Admin/Coord], [Nombre, país, área, estado],
+),
+caption: [Tipos de reporte disponibles para exportación],
+) <tab-reportes>
+
+*Pasos*:
+
++ Navegar a la sección correspondiente (Dashboard para usuarios/auditoría, Portal para beneficiarios).
++ Hacer clic en el botón *"Exportar PDF"* o *"Descargar PDF"*.
++ El navegador descarga automáticamente el archivo PDF.
+
+#infobox(title: "Integridad del reporte")[
+  Cada reporte incluye en el pie de página un hash SHA-256 calculado sobre los datos del reporte. Si alguien altera el contenido después de la generación, recalcular el hash sobre los datos producirá un valor diferente, permitiendo detectar la manipulación.
+]
+
+== Cambiar el rol de un usuario (Administrador)
+
+*Pasos*:
+
++ En el *Panel de administración*, localizar al usuario.
++ Expandir su fila y buscar el control "Cambiar rol".
++ Seleccionar el nuevo rol del menú desplegable.
++ Si el nuevo rol requiere criptografía (Admin o Coordinador), ingresar una contraseña para proteger los nuevos archivos.
++ Confirmar el cambio.
+
+*Ejemplo*: Promover a "Omar Operativo" de rol Operativo a Coordinador.
+
+#successbox(title: "Resultado esperado")[
+  El rol se actualiza. Si el cambio implica pasar a un rol criptográfico, se emiten automáticamente nuevos archivos `private_key.pem` y `certificate.pem`.
+]
+
+== Desbloquear una cuenta bloqueada (Administrador)
+
+El sistema bloquea automáticamente las cuentas después de 10 intentos fallidos consecutivos de inicio de sesión. El bloqueo es indefinido y requiere intervención del administrador.
+
+*Pasos*:
+
++ En el *Panel de administración*, localizar al usuario bloqueado.
++ Hacer clic en el botón *"Desbloquear"*.
+
+*Ejemplo*: Desbloquear la cuenta de `coord.legal\@demo.local` después de que el usuario olvidó su contraseña y excedió los 10 intentos.
+
+#successbox(title: "Resultado esperado")[
+  El contador de intentos fallidos se reinicia a cero. El bloqueo se elimina. El usuario puede volver a intentar iniciar sesión normalmente.
+]
+
+== Activar el administrador espejo (recuperación de emergencia)
+
+Este procedimiento se usa exclusivamente en emergencias, cuando el administrador principal no puede acceder al sistema (pérdida de credenciales, incapacidad, etc.).
+
+*Pasos*:
+
++ Iniciar sesión como el administrador principal.
++ En el *Panel de administración*, localizar la sección "Recuperación".
++ Hacer clic en *"Activar administrador espejo"*.
++ Confirmar la acción.
+
+#successbox(title: "Resultado esperado")[
+  - El administrador principal queda *revocado permanentemente*.
+  - El administrador espejo se activa con sus propias credenciales independientes.
+  - Se registra el evento `admin_recovery_activated` en la auditoría.
+]
+
+#warningbox(title: "Procedimiento irreversible")[
+  Una vez activado el espejo, el administrador principal queda permanentemente revocado y sin contraseña. El nuevo administrador activo debe emitir un nuevo respaldo para garantizar la continuidad futura.
+]
+
+== Auto-registro de voluntarios
+
+Los voluntarios y pasantes pueden solicitar acceso al sistema sin intervención directa del administrador.
+
+*Pasos*:
+
++ Desde la página de inicio de sesión, hacer clic en *"Solicitar acceso"*.
++ Completar el formulario:
+  - *Nombre completo*.
+  - *Correo electrónico*.
+  - *Contraseña*.
+  - *Confirmar contraseña*.
++ Hacer clic en *"Registrarse"*.
+
+*Ejemplo*: La voluntaria "Valentina López" se registra con `valentina\@gmail.com`.
+
+#successbox(title: "Resultado esperado")[
+  Se crea una cuenta con rol *Voluntario* en estado "pending". El usuario no puede iniciar sesión hasta que un administrador active su cuenta desde el panel de administración.
+]
+
+== Consultar la auditoría (Administrador)
+
+*Pasos*:
+
++ En el *Panel de administración*, navegar a la sección "Auditoría".
++ Revisar la tabla con los últimos eventos del sistema:
+  - *Fecha*: Timestamp del evento.
+  - *Tipo*: `login_password`, `login_crypto`, `certificate_issued`, `user_status_updated`, `access_denied`, etc.
+  - *Acción*: `create`, `activate`, `revoke`, `login`, etc.
+  - *Resultado*: `success` o `failure`.
+  - *IP*: Dirección IP del cliente.
+  - *User-Agent*: Identificador del navegador utilizado.
++ Para exportar, hacer clic en *"Exportar PDF"*.
+
+#successbox(title: "Resultado esperado")[
+  Se muestra la tabla con los últimos 50 eventos. Al exportar, se descarga un PDF con todos los eventos visibles y un hash SHA-256 de integridad.
+]
+
+== Ver certificados digitales
+
+=== Certificado de la autoridad firmante (CA)
+
+*Pasos*:
+
++ Desde el *Panel de administración*, hacer clic en *"Ver certificado de la CA"* o navegar a `/ui/ca/certificate/view`.
++ Se muestra una página con los detalles del certificado raíz del sistema:
+  - *Sujeto / Emisor*: "Casa Monarca Internal CA" (autofirmado).
+  - *Serie*: Número hexadecimal único.
+  - *Vigencia*: 10 años desde la creación.
+  - *Huella SHA-256*: Fingerprint criptográfico del certificado.
+  - *PEM*: Certificado completo en formato PEM (expandible).
+
+=== Certificado de un usuario
+
+*Pasos*:
+
++ Desde el *Panel de administración*, expandir la fila del usuario con certificado.
++ Hacer clic en *"Ver certificado de identidad"*.
++ Se muestra la misma vista con los datos específicos del certificado: sujeto (nombre del usuario), emisor (administrador firmante), SAN (email del usuario), vigencia y fingerprint.
+// ============================================================================
+// CAPÍTULO 6 — SOLUCIÓN DE PROBLEMAS
+// ============================================================================
+
+= Solución de Problemas
+
+== Errores comunes
+
+#figure(
+table(
+columns: (1fr, 1fr, 1.3fr),
+align: (left, left, left),
+stroke: 0.5pt + rgb("#e5ddd3"),
+fill: (_, row) => if row == 0 { rgb("#1a2332") } else if calc.odd(row) { rgb("#faf7f3") } else { white },
+table.header(
+text(fill: white, weight: "bold")[Error / Síntoma],
+text(fill: white, weight: "bold")[Causa probable],
+text(fill: white, weight: "bold")[Solución],
+),
+[No se pudo abrir private_key.pem con esa contraseña],
+[Contraseña incorrecta para descifrar la llave privada],
+[Verificar la contraseña exacta proporcionada por el admin al emitir credenciales. Distingue mayúsculas/minúsculas.],
+
+
+[La cuenta no está activa: pending],
+[La cuenta fue creada pero no activada],
+[Contactar al administrador para que active la cuenta.],
+
+[Cuenta bloqueada por demasiados intentos],
+[Se superaron los 10 intentos de login],
+[Contactar al administrador para desbloquear la cuenta. El bloqueo es indefinido.],
+
+[El certificado está fuera de vigencia],
+[El certificado X.509 expiró],
+[El administrador debe reemitir las credenciales con nueva fecha de vigencia.],
+
+[Requiere autenticación con private_key.pem y certificate.pem],
+[Login por contraseña para un rol criptográfico],
+[Usar la autenticación criptográfica: subir los archivos .pem además de la contraseña.],
+
+[La llave privada ya fue entregada],
+[Se intenta descargar private_key.pem por segunda vez],
+[El administrador debe reemitir credenciales. La llave anterior fue eliminada del servidor.],
+
+[SESSION_SECRET debe definirse con un valor seguro],
+[Servidor en producción sin cambiar el secreto],
+[Definir la variable `SESSION_SECRET` con: `openssl rand -hex 32`.],
+
+[ModuleNotFoundError al iniciar],
+[Dependencias no instaladas],
+[Activar el entorno virtual y ejecutar `pip install -e .`.],
+
+[El certificado no corresponde al usuario],
+[Se subió un certificado de otro usuario o antiguo],
+[Descargar el certificado correcto desde el portal del usuario.],
+
+[Base de datos vacía al iniciar],
+[Primera ejecución o BD eliminada],
+[Normal. El sistema crea tablas y datos demo automáticamente.],
+),
+caption: [Errores comunes y sus soluciones],
+) <tab-errores>
+
+== Qué hacer si algo falla
+
++ *Revisar la terminal*: Los errores del servidor se imprimen en la consola donde corre `uvicorn`. Buscar el mensaje específico.
++ *Verificar la URL*: Asegurarse de usar `http://127.0.0.1:8000` (local) o la URL correcta de producción.
++ *Limpiar cookies*: Si hay problemas de sesión, borrar las cookies del sitio en el navegador.
++ *Reiniciar el servidor*: Detener con `Ctrl+C` y ejecutar de nuevo `uvicorn app.main:app --reload`.
++ *Recrear la BD*: Eliminar `identity_demo.db` y reiniciar. Se crea una base de datos limpia con todos los datos demo.
++ *Verificar archivos*: Confirmar que `private_key.pem` y `certificate.pem` son los correctos y no están corruptos.
+
+== Contacto de soporte
+
+- *Equipo*: Equipo 2 --- Criptografía
+- *Institución*: Tecnológico de Monterrey
+- *Curso*: Criptografía --- 6to Semestre
+- *Repositorio*: Consultar el archivo `README.md` del proyecto para la URL del repositorio y documentación adicional.
+// ============================================================================
+// CAPÍTULO 7 — PREGUNTAS FRECUENTES (FAQ)
+// ============================================================================
+
+= Preguntas Frecuentes (FAQ)
+
+*P1. ¿Qué hago si perdí mi archivo de acceso (private_key.pem)?*
+
+Contactar al administrador del sistema. El administrador reemitirá las credenciales desde el panel de administración, generando un nuevo par de archivos (`private_key.pem` y `certificate.pem`). Los archivos anteriores quedan automáticamente invalidados al cambiar el número de serie del certificado.
+
+*P2. ¿Puedo usar mi private_key.pem en más de un dispositivo?*
+
+Sí. Una vez descargado, el archivo puede copiarse a cualquier dispositivo. Sin embargo, debe protegerse con el mismo cuidado que una contraseña: cualquier persona con el archivo y la contraseña que lo descifra puede suplantar la identidad del usuario.
+
+*P3. ¿Por qué el administrador usa certificados en lugar de una contraseña simple?*
+
+Porque los certificados proporcionan autenticación de dos factores: algo que _tienes_ (el archivo) y algo que _sabes_ (la contraseña). Una contraseña sola puede ser adivinada, robada o filtrada; con certificados, el atacante necesita también poseer el archivo físico. Además, el certificado permite verificar criptográficamente que fue emitido por una autoridad legítima.
+
+*P4. ¿Qué es el "administrador espejo" y cuándo debo usarlo?*
+
+Es una copia de seguridad del administrador principal, mantenida automáticamente por el sistema en estado "revocado". Solo se usa en emergencias: si el admin principal pierde sus credenciales o no puede acceder, se activa el espejo para recuperar el control. Las credenciales del espejo deben guardarse en un lugar seguro y separado (por ejemplo, un sobre sellado).
+
+*P5. ¿Qué pasa cuando mi cuenta expira?*
+
+El estado cambia automáticamente a "expired" y no es posible iniciar sesión. El administrador puede renovar la cuenta actualizando la fecha de expiración y, si aplica, reemitiendo las credenciales criptográficas con la nueva vigencia.
+
+*P6. ¿Cómo puedo verificar que un reporte PDF no fue alterado?*
+
+Cada PDF incluye un hash SHA-256 en el pie de página, calculado sobre los datos tabulados del reporte. Para verificar: extraer los datos del PDF, recalcular el hash SHA-256 y comparar con el impreso. Si no coinciden, el contenido fue modificado.
+
+*P7. ¿Puedo registrarme sin que un administrador me cree la cuenta?*
+
+Sí, pero solo como *Voluntario*. Desde la página de login, seleccionar "Solicitar acceso" y completar el formulario. La cuenta queda en estado "pending" hasta que un administrador la active.
+
+*P8. ¿Qué base de datos usa el sistema?*
+
+En desarrollo usa SQLite (archivo `identity_demo.db`). En producción se recomienda PostgreSQL configurando la variable `DATABASE_URL`.
+
+*P9. ¿Es seguro para producción real?*
+
+El sistema implementa buenas prácticas (PBKDF2, RSA-2048, cookies firmadas, X.509). Para producción real se recomienda adicionalmente: HTTPS obligatorio, mayor número de iteraciones de PBKDF2, un HSM para la CA, rate limiting por IP, y un servicio de secretos externo (Vault, AWS KMS).
+
+*P10. ¿Cuántos intentos de login tengo antes del bloqueo?*
+
+10 intentos. Después del décimo intento fallido consecutivo, la cuenta se bloquea indefinidamente. Solo un administrador puede desbloquearla.
+
+// ============================================================================
+// CAPÍTULO 8 — REFERENCIAS
+// ============================================================================
+
+= Referencias
+
++ *FastAPI Documentation*. Disponible en: #link("https://fastapi.tiangolo.com/"). Framework web utilizado para el desarrollo del servidor.
+
++ *Python Cryptography Library*. Disponible en: #link("https://cryptography.io/"). Biblioteca para operaciones criptográficas: RSA, X.509, PBKDF2, firmas digitales.
+
++ *RFC 5280* --- Internet X.509 Public Key Infrastructure Certificate and CRL Profile. IETF. Estándar de certificados digitales X.509.
+
++ *RFC 8017* --- PKCS \#1: RSA Cryptography Specifications Version 2.2. IETF. Esquemas de padding PKCS\#1 v1.5 y PSS.
+
++ *RFC 2898* --- PKCS \#5: Password-Based Cryptography Specification Version 2.0. IETF. Especificación de PBKDF2.
+
++ *OWASP Password Storage Cheat Sheet*. Disponible en: #link("https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html").
+
++ *NIST SP 800-63B* --- Digital Identity Guidelines: Authentication and Lifecycle Management. NIST.
+
++ *SQLAlchemy 2.0 Documentation*. Disponible en: #link("https://docs.sqlalchemy.org/").
+
++ *itsdangerous Documentation*. Disponible en: #link("https://itsdangerous.palletsprojects.com/").
+
++ *Docker Documentation*. Disponible en: #link("https://docs.docker.com/").
+

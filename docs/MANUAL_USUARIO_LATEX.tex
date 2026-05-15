@@ -1,0 +1,1052 @@
+% ============================================================================
+% MANUAL DE USUARIO — Gestor de Identidades Casa Monarca
+% Formato: LaTeX Report, 10pt, Arial (Helvetica), Carta, márgenes 20mm/25mm
+% ============================================================================
+\documentclass[10pt,letterpaper]{report}
+
+% ── Codificación y fuente ───────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{helvet}                     % Arial → Helvetica (equivalente LaTeX)
+\renewcommand{\familydefault}{\sfdefault}
+
+% ── Márgenes ────────────────────────────────────────────────────────────────
+\usepackage[
+  top=20mm,
+  bottom=20mm,
+  left=25mm,
+  right=25mm,
+  letterpaper
+]{geometry}
+
+% ── Interlineado ────────────────────────────────────────────────────────────
+\usepackage{setspace}
+\setstretch{1.15}                       % Interlineado compacto (~5pt extra)
+\setlength{\parskip}{5pt}
+\setlength{\parindent}{0pt}
+
+% ── Paquetes gráficos y utilidades ──────────────────────────────────────────
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{listings}
+\usepackage{tcolorbox}
+
+% ── Colores corporativos ───────────────────────────────────────────────────
+\definecolor{itesmblue}{RGB}{0,47,108}
+\definecolor{accentorange}{RGB}{224,96,32}
+\definecolor{darktext}{RGB}{26,35,50}
+\definecolor{graytext}{RGB}{107,114,128}
+\definecolor{lightbg}{RGB}{245,240,232}
+\definecolor{codebg}{RGB}{248,247,244}
+
+% ── Configuración de hyperref ──────────────────────────────────────────────
+\hypersetup{
+  colorlinks=true,
+  linkcolor=itesmblue,
+  urlcolor=accentorange,
+  citecolor=itesmblue,
+  pdfauthor={Equipo 2},
+  pdftitle={Manual de Usuario — Gestor de Identidades},
+}
+
+% ── Estilo de código ───────────────────────────────────────────────────────
+\lstset{
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{graytext},
+  captionpos=b,
+  tabsize=2,
+  showstringspaces=false,
+}
+
+% ── Estilo de encabezado/pie ───────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{graytext}Manual de Usuario — Gestor de Identidades v1.0}
+\fancyhead[R]{\small\color{graytext}Casa Monarca}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ── Cajas informativas ────────────────────────────────────────────────────
+\newtcolorbox{infobox}[1][]{
+  colback=blue!5,
+  colframe=itesmblue,
+  fonttitle=\bfseries,
+  title={#1},
+  rounded corners,
+  boxrule=0.5pt,
+}
+
+\newtcolorbox{warningbox}[1][]{
+  colback=orange!5,
+  colframe=accentorange,
+  fonttitle=\bfseries,
+  title={#1},
+  rounded corners,
+  boxrule=0.5pt,
+}
+
+\newtcolorbox{successbox}[1][]{
+  colback=green!5,
+  colframe=green!50!black,
+  fonttitle=\bfseries,
+  title={#1},
+  rounded corners,
+  boxrule=0.5pt,
+}
+
+% ── Formato de títulos ─────────────────────────────────────────────────────
+\titleformat{\chapter}[display]
+  {\normalfont\LARGE\bfseries\color{itesmblue}}
+  {\chaptertitlename\ \thechapter}{12pt}{\LARGE}
+\titlespacing*{\chapter}{0pt}{-20pt}{20pt}
+
+% ============================================================================
+% PORTADA
+% ============================================================================
+\begin{document}
+
+\begin{titlepage}
+  \centering
+
+  % ── Escudo del Instituto ──
+  % INSTRUCCIÓN: Reemplaza "escudo_tec.png" con la ruta real del escudo del Tec.
+  % Descárgalo de recursos oficiales y colócalo en la misma carpeta que este .tex
+  % \includegraphics[width=4cm]{escudo_tec.png}
+
+  % Placeholder si no tienes la imagen aún:
+  \vspace{1cm}
+  {\Large\bfseries\color{itesmblue} [Escudo del Instituto]}\\[0.3cm]
+  {\small\color{graytext} (Insertar imagen: escudo\_tec.png)}
+
+  \vspace{1.2cm}
+
+  {\Large\bfseries\color{itesmblue}
+    Instituto Tecnológico y de Estudios Superiores de Monterrey}\\[0.6cm]
+
+  {\large\bfseries Escuela de Ingeniería y Ciencias}\\[0.3cm]
+
+  {\large Ingeniería en Ciencias de Datos y Matemáticas}\\[1.5cm]
+
+  \rule{\textwidth}{1.5pt}\\[0.5cm]
+  {\LARGE\bfseries\color{darktext}
+    Manual de Usuario\\[0.2cm]
+    Gestor de Identidades\\[0.2cm]
+    Versión 1.0}\\[0.5cm]
+  \rule{\textwidth}{1.5pt}
+
+  \vspace{1.5cm}
+
+  % ── Integrantes ──
+  {\large\bfseries Equipo 2}\\[0.4cm]
+  \begin{tabular}{l l}
+    % INSTRUCCIÓN: Reemplaza con los nombres y matrículas reales
+    Nombre Completo Estudiante 1 & A0XXXXXXX \\
+    Nombre Completo Estudiante 2 & A0XXXXXXX \\
+    Nombre Completo Estudiante 3 & A0XXXXXXX \\
+    Nombre Completo Estudiante 4 & A0XXXXXXX \\
+    Nombre Completo Estudiante 5 & A0XXXXXXX \\
+  \end{tabular}
+
+  \vspace{0.8cm}
+
+  {\normalsize Grupo: \_\_\_\_\_\_\_\_\_\_}
+
+  \vspace{0.8cm}
+
+  {\large\bfseries Profesores}\\[0.3cm]
+  \begin{tabular}{l}
+    % INSTRUCCIÓN: Reemplaza con los nombres reales
+    Nombre del Profesor 1 \\
+    Nombre del Profesor 2 \\
+  \end{tabular}
+
+  \vspace{0.8cm}
+
+  {\large\bfseries Socio Formador}\\[0.2cm]
+  {\large Casa Monarca — Centro de Colaboración con Migrantes y Refugiados A.C.}
+
+  \vfill
+
+  {\normalsize Monterrey, Nuevo León\\
+  30 de abril de 2023}
+
+\end{titlepage}
+
+% ============================================================================
+% ÍNDICES
+% ============================================================================
+\pagenumbering{roman}
+
+\tableofcontents
+\newpage
+
+\listoftables
+\newpage
+
+\listoffigures
+\newpage
+
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+% ============================================================================
+% CAPÍTULO 1 — INTRODUCCIÓN
+% ============================================================================
+\chapter{Introducción}
+
+\section{¿Qué es la aplicación?}
+
+El \textbf{Gestor de Identidades} es una aplicación web desarrollada para \textbf{Casa Monarca --- Centro de Colaboración con Migrantes y Refugiados A.C.} Su propósito es administrar de manera segura las identidades digitales del personal de la organización: quién puede acceder al sistema, qué puede hacer y con qué nivel de confianza criptográfica.
+
+El sistema implementa una \textbf{Infraestructura de Clave Pública (PKI)} interna que emite certificados digitales X.509 para los roles de mayor privilegio, mientras que los roles operativos acceden con credenciales tradicionales (correo electrónico y contraseña).
+
+La aplicación está construida con \textbf{Python 3.11+}, el framework web \textbf{FastAPI}, el ORM \textbf{SQLAlchemy} y la biblioteca de criptografía \textbf{cryptography} de Python. Puede ejecutarse localmente con SQLite o desplegarse en producción con PostgreSQL y Docker.
+
+\section{¿Para qué sirve?}
+
+La aplicación resuelve las siguientes necesidades operativas y de seguridad de Casa Monarca:
+
+\begin{enumerate}[leftmargin=2cm]
+  \item \textbf{Gestión de usuarios}: Crear, activar, revocar y expirar cuentas del personal con control granular por rol.
+  \item \textbf{Control de acceso basado en roles (RBAC)}: Cuatro niveles de permisos jerárquicos que limitan qué puede hacer cada tipo de usuario en el sistema.
+  \item \textbf{Autenticación criptográfica}: Los roles privilegiados (Administrador y Coordinador) se autentican mediante archivos criptográficos (\texttt{private\_key.pem} + \texttt{certificate.pem} + contraseña), proporcionando autenticación de dos factores.
+  \item \textbf{Emisión de certificados digitales}: Generación de certificados X.509 firmados con RSA-2048 y SHA-256, siguiendo una cadena de confianza verificable.
+  \item \textbf{Registro de beneficiarios}: Sistema CRUD para el seguimiento de personas migrantes atendidas por la organización, organizado por áreas (Legal, Psicosocial, Humanitario, Administración, Comunicación).
+  \item \textbf{Auditoría completa}: Registro inmutable de todas las acciones realizadas en el sistema, incluyendo inicios de sesión, cambios de estado, emisión de certificados y accesos denegados.
+  \item \textbf{Recuperación de emergencia}: Mecanismo de administrador espejo (backup) que garantiza la continuidad operativa si el administrador principal pierde acceso.
+  \item \textbf{Generación de reportes}: Exportación de datos en PDF con hash de integridad SHA-256 embebido para detectar manipulaciones.
+\end{enumerate}
+
+\section{¿A quién va dirigida?}
+
+La aplicación está diseñada para el personal de Casa Monarca, dividido en cuatro roles funcionales:
+
+\begin{table}[H]
+  \centering
+  \caption{Usuarios objetivo del sistema y sus características de acceso}
+  \label{tab:usuarios-objetivo}
+  \begin{tabularx}{\textwidth}{l l X}
+    \toprule
+    \textbf{Rol} & \textbf{Método de acceso} & \textbf{Descripción y capacidades} \\
+    \midrule
+    Administrador & Archivos criptográficos & Director de TI o encargado de seguridad. Control total: gestión de usuarios, emisión de certificados, auditoría, recuperación de emergencia. \\
+    Coordinador   & Archivos criptográficos & Coordinadores de área (Legal, Psicosocial, Humanitario, etc.). Gestión de beneficiarios de su área, visualización de documentos y operaciones. \\
+    Operativo     & Correo + contraseña     & Personal operativo de campo. Registro de beneficiarios, consulta de documentos y operaciones. \\
+    Voluntario    & Correo + contraseña     & Voluntarios y pasantes. Acceso limitado a consulta de documentos y registro básico de beneficiarios. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ============================================================================
+% CAPÍTULO 2 — REQUERIMIENTOS DEL SISTEMA
+% ============================================================================
+\chapter{Requerimientos del Sistema}
+
+\section{Hardware mínimo}
+
+\begin{table}[H]
+  \centering
+  \caption{Requerimientos mínimos de hardware para el servidor}
+  \label{tab:hw-minimo}
+  \begin{tabularx}{\textwidth}{l X}
+    \toprule
+    \textbf{Componente} & \textbf{Requisito mínimo} \\
+    \midrule
+    Procesador   & Intel Core i3 / AMD Ryzen 3 o superior (arquitectura x86\_64) \\
+    Memoria RAM  & 2 GB mínimo (4 GB recomendado para uso concurrente) \\
+    Disco duro   & 500 MB de espacio libre (sin contar la base de datos) \\
+    Red          & Conexión a Internet para despliegue remoto, o red local para acceso interno \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\begin{infobox}[Nota sobre clientes]
+  Para \textbf{acceder como usuario} desde un navegador, cualquier computadora, tableta o teléfono moderno es suficiente. Los requerimientos de hardware de esta tabla aplican únicamente al \textbf{servidor} donde se instala y ejecuta la aplicación.
+\end{infobox}
+
+\section{Software necesario}
+
+\begin{table}[H]
+  \centering
+  \caption{Software requerido para la instalación del servidor}
+  \label{tab:sw-necesario}
+  \begin{tabularx}{\textwidth}{l l X}
+    \toprule
+    \textbf{Software} & \textbf{Versión mínima} & \textbf{Propósito} \\
+    \midrule
+    Python          & 3.11+  & Lenguaje de ejecución del servidor \\
+    pip             & 23.0+  & Gestor de paquetes de Python \\
+    Git             & 2.30+  & Clonar el repositorio del proyecto \\
+    Docker (opc.)   & 20.0+  & Despliegue alternativo con contenedores \\
+    PostgreSQL (opc.) & 14+ & Base de datos recomendada para producción \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{Navegadores compatibles (clientes)}
+
+\begin{table}[H]
+  \centering
+  \caption{Navegadores web compatibles para los usuarios finales}
+  \label{tab:navegadores}
+  \begin{tabularx}{\textwidth}{l l X}
+    \toprule
+    \textbf{Navegador} & \textbf{Versión mínima} & \textbf{Notas} \\
+    \midrule
+    Google Chrome      & 90+   & Recomendado \\
+    Mozilla Firefox    & 88+   & Compatible \\
+    Microsoft Edge     & 90+   & Compatible \\
+    Safari             & 14+   & Compatible (macOS/iOS) \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\section{Versiones compatibles y dependencias del proyecto}
+
+\begin{table}[H]
+  \centering
+  \caption{Dependencias del proyecto definidas en \texttt{pyproject.toml}}
+  \label{tab:dependencias}
+  \begin{tabularx}{\textwidth}{l l X}
+    \toprule
+    \textbf{Paquete} & \textbf{Versión} & \textbf{Función en el sistema} \\
+    \midrule
+    \texttt{fastapi}           & $\geq$ 0.115.0 & Framework web asíncrono para las rutas HTTP \\
+    \texttt{cryptography}      & $\geq$ 43.0.0  & RSA, X.509, firmas digitales, cifrado de llaves \\
+    \texttt{itsdangerous}      & $\geq$ 2.2.0   & Firmado HMAC de cookies de sesión \\
+    \texttt{uvicorn}           & $\geq$ 0.30.0  & Servidor ASGI para ejecutar FastAPI \\
+    \texttt{python-multipart}  & $\geq$ 0.0.9   & Procesamiento de archivos subidos (login crypto) \\
+    \texttt{sqlalchemy}        & $\geq$ 2.0.35  & ORM para la capa de base de datos \\
+    \texttt{psycopg[binary]}   & $\geq$ 3.2.0   & Driver nativo para PostgreSQL \\
+    \texttt{pydantic-settings}  & $\geq$ 2.5.2   & Configuración tipada con variables de entorno \\
+    \texttt{fpdf2}             & $\geq$ 2.7.0   & Generación de reportes en formato PDF \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ============================================================================
+% CAPÍTULO 3 — INSTALACIÓN
+% ============================================================================
+\chapter{Instalación}
+
+\section{Opción A: Instalación local (desarrollo)}
+
+\begin{enumerate}[leftmargin=2cm]
+  \item \textbf{Clonar el repositorio del proyecto.}
+  \begin{lstlisting}[language=bash]
+git clone <URL_DEL_REPOSITORIO>
+cd RetoCriptografia-Equipo2
+  \end{lstlisting}
+
+  \item \textbf{Crear un entorno virtual de Python.}
+  \begin{lstlisting}[language=bash]
+python -m venv venv
+  \end{lstlisting}
+
+  \item \textbf{Activar el entorno virtual.}
+
+  En \textbf{Windows} (PowerShell):
+  \begin{lstlisting}[language=bash]
+.\venv\Scripts\Activate.ps1
+  \end{lstlisting}
+
+  En \textbf{Windows} (CMD):
+  \begin{lstlisting}[language=bash]
+venv\Scripts\activate.bat
+  \end{lstlisting}
+
+  En \textbf{macOS / Linux}:
+  \begin{lstlisting}[language=bash]
+source venv/bin/activate
+  \end{lstlisting}
+
+  \item \textbf{Instalar todas las dependencias del proyecto.}
+  \begin{lstlisting}[language=bash]
+pip install -e .
+  \end{lstlisting}
+  Este comando lee el archivo \texttt{pyproject.toml} e instala automáticamente todas las bibliotecas listadas en la Tabla~\ref{tab:dependencias}.
+
+  \item \textbf{Ejecutar el servidor de desarrollo.}
+  \begin{lstlisting}[language=bash]
+uvicorn app.main:app --reload
+  \end{lstlisting}
+  La bandera \texttt{--reload} habilita la recarga automática cuando se modifican archivos (solo para desarrollo).
+
+  \item \textbf{Acceder a la aplicación.} Abrir un navegador web y navegar a:
+  \begin{lstlisting}
+http://127.0.0.1:8000
+  \end{lstlisting}
+\end{enumerate}
+
+\begin{successbox}[Resultado esperado]
+  La terminal muestra el mensaje \texttt{Uvicorn running on http://127.0.0.1:8000}. Al abrir esa URL en el navegador, aparece la página de inicio de sesión del sistema con el branding de Casa Monarca y el formulario de login.
+\end{successbox}
+
+% ── Figura placeholder ──
+% \begin{figure}[H]
+%   \centering
+%   \includegraphics[width=0.85\textwidth]{img/terminal_uvicorn.png}
+%   \caption{Servidor ejecutándose correctamente en la terminal}
+%   \label{fig:terminal-uvicorn}
+% \end{figure}
+
+\section{Opción B: Instalación con Docker}
+
+\begin{enumerate}[leftmargin=2cm]
+  \item \textbf{Construir la imagen Docker.}
+  \begin{lstlisting}[language=bash]
+docker build -t gestor-identidades .
+  \end{lstlisting}
+
+  \item \textbf{Ejecutar el contenedor.}
+  \begin{lstlisting}[language=bash]
+docker run -p 8000:8000 gestor-identidades
+  \end{lstlisting}
+
+  \item \textbf{Acceder} en \texttt{http://localhost:8000}.
+\end{enumerate}
+
+El \texttt{Dockerfile} incluido usa Python 3.11 slim como imagen base y expone el puerto 8000.
+
+\section{Opción C: Despliegue en Render (producción)}
+
+El repositorio incluye un archivo \texttt{render.yaml} preconfigurado para despliegue con un clic en la plataforma Render, incluyendo una base de datos PostgreSQL administrada automáticamente.
+
+\begin{warningbox}[Consideraciones importantes para producción]
+  \begin{itemize}[leftmargin=0.5cm]
+    \item \textbf{Obligatorio}: Definir la variable de entorno \texttt{SESSION\_SECRET} con un valor aleatorio de al menos 32 bytes. Generar con: \texttt{openssl rand -hex 32}. Si no se cambia el valor predeterminado, el servidor \textbf{rechaza arrancar}.
+    \item Establecer \texttt{SEED\_DEMO\_DATA=false} para no crear usuarios de demostración.
+    \item Establecer \texttt{ENVIRONMENT=production} para activar las validaciones de seguridad.
+    \item Usar PostgreSQL (\texttt{DATABASE\_URL}) en lugar de SQLite para ambientes multiusuario.
+    \item Definir \texttt{BOOTSTRAP\_ADMIN\_EMAIL} y \texttt{BOOTSTRAP\_ADMIN\_PASSWORD} para crear el administrador inicial de producción.
+  \end{itemize}
+\end{warningbox}
+
+% ============================================================================
+% CAPÍTULO 4 — INICIO DE LA APLICACIÓN
+% ============================================================================
+\chapter{Inicio de la Aplicación}
+
+\section{Cómo acceder}
+
+Una vez que el servidor está en ejecución, abrir el navegador web y navegar a la URL correspondiente:
+
+\begin{itemize}[leftmargin=2cm]
+  \item \textbf{Desarrollo local}: \texttt{http://127.0.0.1:8000}
+  \item \textbf{Producción}: La URL asignada por el proveedor de hosting (ej. \texttt{https://mi-app.onrender.com})
+\end{itemize}
+
+El sistema redirige automáticamente a la página de inicio de sesión (\texttt{/login}).
+
+\section{Inicio de sesión}
+
+La página de login se divide visualmente en dos paneles: a la izquierda se muestra el branding de Casa Monarca con la leyenda ``Sistema de gestión de identidades y accesos''; a la derecha se presenta el formulario de autenticación con zonas de carga de archivos para el login criptográfico y campos para correo/contraseña.
+
+% \begin{figure}[H]
+%   \centering
+%   \includegraphics[width=0.9\textwidth]{img/login_page.png}
+%   \caption{Página de inicio de sesión del sistema}
+%   \label{fig:login-page}
+% \end{figure}
+
+\subsection{Login por contraseña (Operativo / Voluntario)}
+
+\begin{enumerate}[leftmargin=2cm]
+  \item Ingresar el \textbf{correo electrónico} o \textbf{nombre de usuario} en el campo ``Correo o usuario''.
+  \item Ingresar la \textbf{contraseña} en el campo correspondiente.
+  \item Hacer clic en el botón \textbf{``Entrar''}.
+\end{enumerate}
+
+\begin{successbox}[Resultado esperado]
+  Si las credenciales son correctas y la cuenta está activa, el sistema redirige al \textbf{Portal del usuario} (\texttt{/portal}) donde se muestra la información de la cuenta, credenciales y sección de beneficiarios.
+\end{successbox}
+
+\subsection{Login criptográfico (Administrador / Coordinador)}
+
+Los roles privilegiados requieren tres elementos para autenticarse:
+
+\begin{enumerate}[leftmargin=2cm]
+  \item \textbf{Subir el archivo de acceso} (\texttt{private\_key.pem}): Arrastrar o hacer clic en la zona ``Archivo de acceso'' para seleccionar el archivo.
+  \item \textbf{Subir el certificado de identidad} (\texttt{certificate.pem}): Arrastrar o seleccionar el archivo en la zona ``Certificado de identidad''.
+  \item Ingresar el \textbf{correo electrónico} en el campo ``Correo o usuario''.
+  \item Ingresar la \textbf{contraseña} que protege el archivo de acceso.
+  \item Hacer clic en el botón \textbf{``Entrar''}.
+\end{enumerate}
+
+\begin{infobox}[¿Qué verifica el sistema internamente?]
+  El servidor realiza las siguientes verificaciones criptográficas:
+  \begin{enumerate}
+    \item Descifra la llave privada usando la contraseña proporcionada.
+    \item Verifica que el certificado fue emitido por la autoridad correcta (autofirmado para Admin, firmado por el Admin para Coordinador).
+    \item Valida la vigencia, el número de serie y el email del certificado.
+    \item Genera un desafío criptográfico (\textit{challenge}) único con timestamp.
+    \item Firma el desafío con la llave privada y verifica la firma con la llave pública del certificado.
+    \item Si todas las verificaciones pasan, crea la sesión.
+  \end{enumerate}
+\end{infobox}
+
+\subsection{Credenciales de demostración}
+
+Cuando \texttt{SEED\_DEMO\_DATA=true} (valor por defecto en desarrollo), el sistema crea automáticamente usuarios de prueba:
+
+\begin{table}[H]
+  \centering
+  \caption{Credenciales de demostración disponibles}
+  \label{tab:credenciales-demo}
+  \begin{tabularx}{\textwidth}{l l l X}
+    \toprule
+    \textbf{Usuario / Email} & \textbf{Contraseña} & \textbf{Rol} & \textbf{Método de login} \\
+    \midrule
+    \texttt{admin} & \texttt{admin} & Administrador & Bypass demo (solo contraseña) \\
+    \texttt{operativo@demo.local} & \texttt{demo1234} & Operativo & Contraseña \\
+    \texttt{voluntario@demo.local} & \texttt{demo1234} & Voluntario & Contraseña \\
+    \texttt{coord.legal@demo.local} & \texttt{demo1234} & Coordinador & Contraseña (sin cert) \\
+    \texttt{coord.administracion@demo.local} & \texttt{demo1234} & Coordinador & Contraseña (sin cert) \\
+    \texttt{coord.psicosocial@demo.local} & \texttt{demo1234} & Coordinador & Contraseña (sin cert) \\
+    \texttt{coord.humanitario@demo.local} & \texttt{demo1234} & Coordinador & Contraseña (sin cert) \\
+    \texttt{coord.comunicacion@demo.local} & \texttt{demo1234} & Coordinador & Contraseña (sin cert) \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\begin{warningbox}[Importante]
+  El acceso \texttt{admin / admin} es un \textbf{bypass exclusivo para demostración}. En producción (\texttt{SEED\_DEMO\_DATA=false}), se desactiva automáticamente y el administrador debe autenticarse con sus archivos criptográficos.
+\end{warningbox}
+
+\section{Configuración inicial}
+
+Al arrancar por primera vez, el sistema ejecuta automáticamente los siguientes pasos de inicialización:
+
+\begin{enumerate}[leftmargin=2cm]
+  \item Crea todas las tablas necesarias en la base de datos (\texttt{users}, \texttt{roles}, \texttt{permissions}, \texttt{role\_permissions}, \texttt{audit\_logs}, \texttt{system\_secrets}, \texttt{notifications}, \texttt{beneficiarios}).
+  \item Genera los cuatro roles del sistema (Administrador, Coordinador, Operativo, Voluntario) con sus permisos específicos.
+  \item Si \texttt{SEED\_DEMO\_DATA=true}, crea los usuarios de demostración listados en la Tabla~\ref{tab:credenciales-demo}.
+  \item Si se definen \texttt{BOOTSTRAP\_ADMIN\_EMAIL} y \texttt{BOOTSTRAP\_ADMIN\_PASSWORD}, crea el administrador de producción con esas credenciales.
+  \item Genera la Autoridad Certificadora (CA) interna: un par de llaves RSA-2048 y un certificado raíz autofirmado válido por 10 años.
+  \item Crea y sincroniza el administrador espejo (cuenta de respaldo de emergencia).
+  \item Emite certificados criptográficos para los usuarios demo que requieren criptografía.
+\end{enumerate}
+
+No se requiere configuración manual adicional para comenzar a usar el sistema en modo desarrollo.
+
+% ============================================================================
+% CAPÍTULO 5 — GUÍA DE USO
+% ============================================================================
+\chapter{Guía de Uso}
+
+Esta guía organiza las tareas principales del sistema por tipo de acción. Cada tarea incluye los pasos detallados, un ejemplo práctico y el resultado esperado.
+
+% ─────────────────────────────────────────────
+\section{Crear un nuevo usuario (Administrador)}
+
+\textbf{Requisito}: Sesión activa como Administrador.
+
+\textbf{Pasos:}
+\begin{enumerate}[leftmargin=2cm]
+  \item Navegar al \textbf{Panel de administración} haciendo clic en ``Panel de administración'' en la barra lateral, o directamente a \texttt{/dashboard}.
+  \item Localizar la sección \textbf{``Crear usuario''} o navegar a \texttt{/admin/register}.
+  \item Completar el formulario con los siguientes campos:
+  \begin{itemize}
+    \item \textbf{Nombre completo}: Nombre y apellidos del nuevo usuario.
+    \item \textbf{Correo electrónico}: Dirección de email institucional (debe ser única en el sistema).
+    \item \textbf{Rol}: Seleccionar entre Administrador, Coordinador, Operativo o Voluntario.
+    \item \textbf{Fecha de expiración} (opcional): Fecha hasta la cual la cuenta será válida. Si se deja vacía, se asignan 365 días para roles criptográficos.
+    \item \textbf{Contraseña}: Contraseña inicial del usuario.
+  \end{itemize}
+  \item Hacer clic en el botón \textbf{``Crear usuario''}.
+\end{enumerate}
+
+\textbf{Ejemplo}: Crear al coordinador legal ``María García'' con email \texttt{maria.garcia@casamonarca.org}, rol ``Coordinador'' y contraseña ``Cr1pt0Segura!''.
+
+\begin{successbox}[Resultado esperado]
+  El usuario se crea en estado \textbf{``pending''} (pendiente de activación). Si el rol seleccionado es Administrador o Coordinador, se generan automáticamente el certificado X.509 y la llave privada cifrada con la contraseña proporcionada. El administrador debe activar la cuenta antes de que el usuario pueda iniciar sesión.
+\end{successbox}
+
+% \begin{figure}[H]
+%   \centering
+%   \includegraphics[width=0.85\textwidth]{img/crear_usuario.png}
+%   \caption{Formulario de creación de usuario en el panel de administración}
+%   \label{fig:crear-usuario}
+% \end{figure}
+
+% ─────────────────────────────────────────────
+\section{Activar un usuario pendiente (Administrador)}
+
+\textbf{Requisito}: Sesión activa como Administrador. Usuario objetivo en estado ``pending''.
+
+\textbf{Pasos:}
+\begin{enumerate}[leftmargin=2cm]
+  \item En el \textbf{Panel de administración}, localizar al usuario con estado ``pending'' en la lista.
+  \item Expandir la fila del usuario haciendo clic sobre ella.
+  \item Hacer clic en el botón \textbf{``Activar''}.
+  \item Si el usuario tiene rol criptográfico, se solicitará una contraseña para proteger el material criptográfico regenerado.
+\end{enumerate}
+
+\textbf{Ejemplo}: Activar la cuenta de ``María García'' que fue creada en el paso anterior.
+
+\begin{successbox}[Resultado esperado]
+  El estado del usuario cambia de ``pending'' a \textbf{``active''}. El usuario ya puede iniciar sesión. Se registra un evento de auditoría de tipo \texttt{user\_status\_updated} con resultado ``success''.
+\end{successbox}
+
+% ─────────────────────────────────────────────
+\section{Revocar un usuario (Administrador)}
+
+\textbf{Requisito}: Sesión activa como Administrador.
+
+\textbf{Pasos:}
+\begin{enumerate}[leftmargin=2cm]
+  \item En el \textbf{Panel de administración}, localizar al usuario activo que se desea revocar.
+  \item Expandir su fila.
+  \item Hacer clic en el botón \textbf{``Revocar''}.
+  \item Confirmar la acción.
+\end{enumerate}
+
+\textbf{Ejemplo}: Revocar el acceso de un voluntario que terminó su servicio.
+
+\begin{successbox}[Resultado esperado]
+  El estado del usuario cambia a \textbf{``revoked''}. El usuario no puede iniciar sesión. Su certificado X.509, si tiene uno, deja de ser aceptado. Se genera el registro de auditoría correspondiente.
+\end{successbox}
+
+% ─────────────────────────────────────────────
+\section{Emitir credenciales criptográficas (Administrador)}
+
+\textbf{Requisito}: Sesión activa como Administrador. Usuario objetivo con rol Admin o Coordinador.
+
+\textbf{Pasos:}
+\begin{enumerate}[leftmargin=2cm]
+  \item En el \textbf{Panel de administración}, localizar al usuario.
+  \item Expandir su fila y localizar la sección \textbf{``Credencial''}.
+  \item Ingresar una \textbf{contraseña} que protegerá el archivo de acceso del usuario.
+  \item Hacer clic en \textbf{``Emitir credencial''} (primera vez) o \textbf{``Reemitir''} (si ya existían credenciales previas).
+\end{enumerate}
+
+\textbf{Ejemplo}: Emitir credenciales para ``María García'' (Coordinador Legal) con la contraseña ``AccesoLegal2023''.
+
+\begin{successbox}[Resultado esperado]
+  Se generan los siguientes archivos para el usuario:
+  \begin{itemize}
+    \item \texttt{certificate.pem} --- Certificado digital X.509 firmado por el administrador activo. Es público y puede descargarse múltiples veces.
+    \item \texttt{private\_key.pem} --- Llave privada RSA-2048 cifrada con AES-256 usando la contraseña proporcionada. \textbf{Descarga única}: se elimina del servidor tras la primera descarga.
+  \end{itemize}
+\end{successbox}
+
+\begin{warningbox}[Descarga única del archivo de acceso]
+  El archivo \texttt{private\_key.pem} solo puede descargarse \textbf{una sola vez}. Después de la primera descarga, el servidor lo elimina permanentemente de la base de datos por seguridad. Si se pierde el archivo, el administrador debe \textbf{reemitir} las credenciales completas, lo que invalida automáticamente las anteriores.
+\end{warningbox}
+
+% ─────────────────────────────────────────────
+\section{Descargar archivos criptográficos}
+
+\subsection{Descargar el archivo de acceso (private\_key.pem)}
+
+\textbf{Pasos:}
+\begin{enumerate}[leftmargin=2cm]
+  \item El administrador navega al usuario en el dashboard, o el propio usuario navega a su portal (\texttt{/portal}).
+  \item En la sección \textbf{``Mis credenciales''} (portal) o en la fila del usuario (dashboard), hacer clic en \textbf{``Descargar archivo de acceso''}.
+  \item El navegador descarga automáticamente el archivo.
+\end{enumerate}
+
+\begin{warningbox}[Advertencia crítica]
+  Este enlace funciona \textbf{una sola vez}. Después de hacer clic, el estado cambia a ``Archivo de acceso entregado'' y la descarga no puede repetirse. Guardar el archivo en un lugar seguro y protegido.
+\end{warningbox}
+
+\subsection{Descargar el certificado (certificate.pem)}
+
+\textbf{Pasos:}
+\begin{enumerate}[leftmargin=2cm]
+  \item Navegar al portal del usuario o al detalle del usuario en el dashboard.
+  \item Hacer clic en \textbf{``Descargar certificado''} o \textbf{``Ver certificado de identidad''}.
+  \item El navegador descarga el archivo \texttt{certificate.pem}.
+\end{enumerate}
+
+\begin{infobox}[Nota]
+  El certificado es un documento \textbf{público}. Contiene solo la llave pública y la identidad del usuario. Puede descargarse múltiples veces sin restricción. La información sensible es únicamente el archivo de acceso (llave privada).
+\end{infobox}
+
+% ─────────────────────────────────────────────
+\section{Registrar un beneficiario}
+
+\textbf{Requisito}: Sesión activa con cualquier rol.
+
+\textbf{Pasos:}
+\begin{enumerate}[leftmargin=2cm]
+  \item En el \textbf{Portal} (\texttt{/portal}), navegar a la sección \textbf{``Beneficiarios''}.
+  \item Completar el formulario de registro:
+  \begin{itemize}
+    \item \textbf{Nombre completo}: Nombre de la persona migrante atendida.
+    \item \textbf{País de origen}: País de procedencia de la persona.
+    \item \textbf{Área}: Seleccionar el área de atención: Administración, Legal, Psicosocial, Humanitario o Comunicación.
+    \item \textbf{Notas} (opcional): Información adicional relevante para el caso.
+  \end{itemize}
+  \item Hacer clic en \textbf{``Registrar beneficiario''}.
+\end{enumerate}
+
+\textbf{Ejemplo}: Registrar a ``Juan Pérez López'', de Honduras, en el área Legal, con nota ``Requiere asesoría para solicitud de refugio''.
+
+\begin{successbox}[Resultado esperado]
+  El beneficiario se registra con estado \textbf{``nuevo''} y aparece en la lista. Los Coordinadores y Administradores pueden actualizar su estado conforme avanza la atención, siguiendo el flujo: \textbf{nuevo} $\rightarrow$ \textbf{en\_revisión} $\rightarrow$ \textbf{canalizado} $\rightarrow$ \textbf{activo}.
+\end{successbox}
+
+% ─────────────────────────────────────────────
+\section{Cambiar el estado de un beneficiario (Coordinador / Administrador)}
+
+\textbf{Pasos:}
+\begin{enumerate}[leftmargin=2cm]
+  \item En la sección \textbf{``Beneficiarios''} del portal, localizar al beneficiario en la tabla.
+  \item Seleccionar el nuevo estado en el menú desplegable junto al registro.
+  \item Hacer clic en \textbf{``Actualizar''}.
+\end{enumerate}
+
+\textbf{Ejemplo}: Cambiar el estado de ``Juan Pérez López'' de ``nuevo'' a ``en\_revisión'' después de la primera entrevista.
+
+\begin{successbox}[Resultado esperado]
+  El estado del beneficiario se actualiza en la base de datos y se refleja inmediatamente en la tabla.
+\end{successbox}
+
+% ─────────────────────────────────────────────
+\section{Generar reportes en PDF}
+
+El sistema permite exportar tres tipos de reportes, cada uno con un hash SHA-256 de integridad:
+
+\begin{table}[H]
+  \centering
+  \caption{Tipos de reporte disponibles para exportación}
+  \label{tab:reportes}
+  \begin{tabularx}{\textwidth}{l l l X}
+    \toprule
+    \textbf{Reporte} & \textbf{Ruta} & \textbf{Acceso} & \textbf{Contenido} \\
+    \midrule
+    Usuarios & \texttt{/ui/users/export.pdf} & Admin & Nombre, email, rol, estado, fecha de creación \\
+    Auditoría & \texttt{/ui/audit-logs/export.pdf} & Admin & Fecha, tipo, acción, resultado, IP \\
+    Beneficiarios & \texttt{/ui/beneficiarios/export.pdf} & Admin/Coord & Nombre, país, área, estado \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\textbf{Pasos:}
+\begin{enumerate}[leftmargin=2cm]
+  \item Navegar a la sección correspondiente (Dashboard para usuarios/auditoría, Portal para beneficiarios).
+  \item Hacer clic en el botón \textbf{``Exportar PDF''} o \textbf{``Descargar PDF''}.
+  \item El navegador descarga automáticamente el archivo PDF.
+\end{enumerate}
+
+\begin{infobox}[Integridad del reporte]
+  Cada reporte incluye en el pie de página un \textbf{hash SHA-256} calculado sobre los datos del reporte. Si alguien altera el contenido después de la generación, recalcular el hash sobre los datos producirá un valor diferente, permitiendo detectar la manipulación.
+\end{infobox}
+
+% ─────────────────────────────────────────────
+\section{Cambiar el rol de un usuario (Administrador)}
+
+\textbf{Pasos:}
+\begin{enumerate}[leftmargin=2cm]
+  \item En el \textbf{Panel de administración}, localizar al usuario.
+  \item Expandir su fila y buscar el control \textbf{``Cambiar rol''}.
+  \item Seleccionar el nuevo rol del menú desplegable.
+  \item Si el nuevo rol requiere criptografía (Admin o Coordinador), ingresar una contraseña para proteger los nuevos archivos.
+  \item Confirmar el cambio.
+\end{enumerate}
+
+\textbf{Ejemplo}: Promover a ``Omar Operativo'' de rol Operativo a Coordinador.
+
+\begin{successbox}[Resultado esperado]
+  El rol se actualiza. Si el cambio implica pasar a un rol criptográfico, se emiten automáticamente nuevos archivos \texttt{private\_key.pem} y \texttt{certificate.pem}.
+\end{successbox}
+
+% ─────────────────────────────────────────────
+\section{Desbloquear una cuenta bloqueada (Administrador)}
+
+El sistema bloquea automáticamente las cuentas después de \textbf{10 intentos fallidos} consecutivos de inicio de sesión. El bloqueo es indefinido y requiere intervención del administrador.
+
+\textbf{Pasos:}
+\begin{enumerate}[leftmargin=2cm]
+  \item En el \textbf{Panel de administración}, localizar al usuario bloqueado.
+  \item Hacer clic en el botón \textbf{``Desbloquear''}.
+\end{enumerate}
+
+\textbf{Ejemplo}: Desbloquear la cuenta de ``coord.legal@demo.local'' después de que el usuario olvidó su contraseña y excedió los 10 intentos.
+
+\begin{successbox}[Resultado esperado]
+  El contador de intentos fallidos se reinicia a cero. El bloqueo se elimina. El usuario puede volver a intentar iniciar sesión normalmente.
+\end{successbox}
+
+% ─────────────────────────────────────────────
+\section{Activar el administrador espejo (recuperación de emergencia)}
+
+Este procedimiento se usa \textbf{exclusivamente en emergencias}, cuando el administrador principal no puede acceder al sistema (pérdida de credenciales, incapacidad, etc.).
+
+\textbf{Pasos:}
+\begin{enumerate}[leftmargin=2cm]
+  \item Iniciar sesión como el \textbf{administrador principal}.
+  \item En el \textbf{Panel de administración}, localizar la sección \textbf{``Recuperación''}.
+  \item Hacer clic en \textbf{``Activar administrador espejo''}.
+  \item Confirmar la acción.
+\end{enumerate}
+
+\begin{successbox}[Resultado esperado]
+  \begin{itemize}
+    \item El administrador principal queda \textbf{revocado} permanentemente.
+    \item El administrador espejo se activa con sus propias credenciales independientes.
+    \item Se registra el evento \texttt{admin\_recovery\_activated} en la auditoría.
+  \end{itemize}
+\end{successbox}
+
+\begin{warningbox}[Procedimiento irreversible]
+  Una vez activado el espejo, el administrador principal queda permanentemente revocado y sin contraseña. El nuevo administrador activo debe emitir un nuevo respaldo para garantizar la continuidad futura.
+\end{warningbox}
+
+% ─────────────────────────────────────────────
+\section{Auto-registro de voluntarios}
+
+Los voluntarios y pasantes pueden solicitar acceso al sistema sin intervención directa del administrador.
+
+\textbf{Pasos:}
+\begin{enumerate}[leftmargin=2cm]
+  \item Desde la página de inicio de sesión, hacer clic en \textbf{``Solicitar acceso''}.
+  \item Completar el formulario:
+  \begin{itemize}
+    \item Nombre completo.
+    \item Correo electrónico.
+    \item Contraseña.
+    \item Confirmar contraseña.
+  \end{itemize}
+  \item Hacer clic en \textbf{``Registrarse''}.
+\end{enumerate}
+
+\textbf{Ejemplo}: La voluntaria ``Valentina López'' se registra con \texttt{valentina@gmail.com}.
+
+\begin{successbox}[Resultado esperado]
+  Se crea una cuenta con rol \textbf{Voluntario} en estado \textbf{``pending''}. El usuario \textbf{no puede iniciar sesión} hasta que un administrador active su cuenta desde el panel de administración.
+\end{successbox}
+
+% ─────────────────────────────────────────────
+\section{Consultar la auditoría (Administrador)}
+
+\textbf{Pasos:}
+\begin{enumerate}[leftmargin=2cm]
+  \item En el \textbf{Panel de administración}, navegar a la sección \textbf{``Auditoría''}.
+  \item Revisar la tabla con los últimos eventos del sistema:
+  \begin{itemize}
+    \item \textbf{Fecha}: Timestamp del evento.
+    \item \textbf{Tipo}: \texttt{login\_password}, \texttt{login\_crypto}, \texttt{certificate\_issued}, \texttt{user\_status\_updated}, \texttt{access\_denied}, etc.
+    \item \textbf{Acción}: \texttt{create}, \texttt{activate}, \texttt{revoke}, \texttt{login}, etc.
+    \item \textbf{Resultado}: \texttt{success} o \texttt{failure}.
+    \item \textbf{IP}: Dirección IP del cliente.
+    \item \textbf{User-Agent}: Identificador del navegador utilizado.
+  \end{itemize}
+  \item Para exportar, hacer clic en \textbf{``Exportar PDF''}.
+\end{enumerate}
+
+\begin{successbox}[Resultado esperado]
+  Se muestra la tabla con los últimos 50 eventos. Al exportar, se descarga un PDF con todos los eventos visibles y un hash SHA-256 de integridad.
+\end{successbox}
+
+% ─────────────────────────────────────────────
+\section{Ver certificados digitales}
+
+\subsection{Certificado de la autoridad firmante (CA)}
+
+\textbf{Pasos:}
+\begin{enumerate}[leftmargin=2cm]
+  \item Desde el \textbf{Panel de administración}, hacer clic en \textbf{``Ver certificado de la CA''} o navegar a \texttt{/ui/ca/certificate/view}.
+  \item Se muestra una página con los detalles del certificado raíz del sistema:
+  \begin{itemize}
+    \item \textbf{Sujeto / Emisor}: ``Casa Monarca Internal CA'' (autofirmado).
+    \item \textbf{Serie}: Número hexadecimal único.
+    \item \textbf{Vigencia}: 10 años desde la creación.
+    \item \textbf{Huella SHA-256}: Fingerprint criptográfico del certificado.
+    \item \textbf{PEM}: Certificado completo en formato PEM (expandible).
+  \end{itemize}
+\end{enumerate}
+
+\subsection{Certificado de un usuario}
+
+\textbf{Pasos:}
+\begin{enumerate}[leftmargin=2cm]
+  \item Desde el \textbf{Panel de administración}, expandir la fila del usuario con certificado.
+  \item Hacer clic en \textbf{``Ver certificado de identidad''}.
+  \item Se muestra la misma vista con los datos específicos del certificado: sujeto (nombre del usuario), emisor (administrador firmante), SAN (email del usuario), vigencia y fingerprint.
+\end{enumerate}
+
+% ============================================================================
+% CAPÍTULO 6 — SOLUCIÓN DE PROBLEMAS
+% ============================================================================
+\chapter{Solución de Problemas}
+
+\section{Errores comunes}
+
+\begin{longtable}{p{4.2cm} p{4cm} p{5.8cm}}
+  \caption{Errores comunes y sus soluciones} \label{tab:errores} \\
+  \toprule
+  \textbf{Error / Síntoma} & \textbf{Causa probable} & \textbf{Solución} \\
+  \midrule
+  \endfirsthead
+  \toprule
+  \textbf{Error / Síntoma} & \textbf{Causa probable} & \textbf{Solución} \\
+  \midrule
+  \endhead
+  \bottomrule
+  \endfoot
+
+  ``No se pudo abrir private\_key.pem con esa contraseña'' &
+  Contraseña incorrecta para descifrar la llave privada &
+  Verificar que se usa la contraseña exacta proporcionada por el administrador al emitir las credenciales. Distingue mayúsculas y minúsculas. \\
+  \midrule
+
+  ``La cuenta no está activa: pending'' &
+  La cuenta fue creada pero no ha sido activada por un admin &
+  Contactar al administrador para que active la cuenta desde el panel de administración. \\
+  \midrule
+
+  ``Cuenta bloqueada por demasiados intentos fallidos'' &
+  Se superaron los 10 intentos de login permitidos &
+  Contactar al administrador para que desbloquee la cuenta. El bloqueo es indefinido. \\
+  \midrule
+
+  ``El certificado está fuera de vigencia'' &
+  El certificado X.509 expiró (fecha \texttt{not\_after} superada) &
+  El administrador debe reemitir las credenciales del usuario con una nueva fecha de vigencia. \\
+  \midrule
+
+  ``Este usuario requiere autenticación con private\_key.pem y certificate.pem'' &
+  Se intenta hacer login solo con contraseña para un rol que requiere crypto &
+  Usar la autenticación criptográfica: subir los archivos \texttt{.pem} además de la contraseña. \\
+  \midrule
+
+  ``La llave privada ya fue entregada'' &
+  Se intenta descargar \texttt{private\_key.pem} por segunda vez &
+  El administrador debe reemitir las credenciales. La llave anterior fue eliminada del servidor. \\
+  \midrule
+
+  ``SESSION\_SECRET debe definirse con un valor seguro'' &
+  Servidor en modo producción sin cambiar el secreto predeterminado &
+  Definir la variable \texttt{SESSION\_SECRET} con: \texttt{openssl rand -hex 32}. \\
+  \midrule
+
+  \texttt{ModuleNotFoundError} al iniciar &
+  Las dependencias no están instaladas &
+  Activar el entorno virtual y ejecutar \texttt{pip install -e .} \\
+  \midrule
+
+  ``El certificado no corresponde al usuario registrado'' &
+  Se subió un certificado de otro usuario o uno antiguo &
+  Descargar el certificado correcto desde el portal del usuario. \\
+  \midrule
+
+  Base de datos vacía al iniciar &
+  Primera ejecución o BD eliminada &
+  Normal. El sistema crea tablas y datos demo automáticamente. \\
+
+\end{longtable}
+
+\section{Qué hacer si algo falla}
+
+\begin{enumerate}[leftmargin=2cm]
+  \item \textbf{Revisar la terminal}: Los errores del servidor se imprimen en la consola donde corre \texttt{uvicorn}. Buscar el mensaje específico.
+  \item \textbf{Verificar la URL}: Asegurarse de usar \texttt{http://127.0.0.1:8000} (local) o la URL correcta de producción.
+  \item \textbf{Limpiar cookies}: Si hay problemas de sesión, borrar las cookies del sitio en el navegador.
+  \item \textbf{Reiniciar el servidor}: Detener con \texttt{Ctrl+C} y ejecutar de nuevo \texttt{uvicorn app.main:app --reload}.
+  \item \textbf{Recrear la BD}: Eliminar \texttt{identity\_demo.db} y reiniciar. Se crea una base de datos limpia con todos los datos demo.
+  \item \textbf{Verificar archivos}: Confirmar que \texttt{private\_key.pem} y \texttt{certificate.pem} son los correctos y no están corruptos.
+\end{enumerate}
+
+\section{Contacto de soporte}
+
+\begin{itemize}[leftmargin=2cm]
+  \item \textbf{Equipo}: Equipo 2 --- Criptografía
+  \item \textbf{Institución}: Tecnológico de Monterrey
+  \item \textbf{Curso}: Criptografía --- 6to Semestre
+  \item \textbf{Repositorio}: Consultar el archivo \texttt{README.md} del proyecto para la URL del repositorio y documentación adicional.
+\end{itemize}
+
+% ============================================================================
+% CAPÍTULO 7 — PREGUNTAS FRECUENTES (FAQ)
+% ============================================================================
+\chapter{Preguntas Frecuentes (FAQ)}
+
+\begin{enumerate}[leftmargin=1cm, label=\textbf{P\arabic*.}]
+
+  \item \textbf{¿Qué hago si perdí mi archivo de acceso (private\_key.pem)?}
+
+  Contactar al administrador del sistema. El administrador reemitirá las credenciales desde el panel de administración, generando un nuevo par de archivos (\texttt{private\_key.pem} y \texttt{certificate.pem}). Los archivos anteriores quedan automáticamente invalidados al cambiar el número de serie del certificado.
+
+  \item \textbf{¿Puedo usar mi private\_key.pem en más de un dispositivo?}
+
+  Sí. Una vez descargado, el archivo puede copiarse a cualquier dispositivo. Sin embargo, debe protegerse con el mismo cuidado que una contraseña: cualquier persona con el archivo \textbf{y} la contraseña que lo descifra puede suplantar la identidad del usuario.
+
+  \item \textbf{¿Por qué el administrador usa certificados en lugar de una contraseña simple?}
+
+  Porque los certificados proporcionan \textbf{autenticación de dos factores}: algo que \textit{tienes} (el archivo) y algo que \textit{sabes} (la contraseña). Una contraseña sola puede ser adivinada, robada o filtrada; con certificados, el atacante necesita también poseer el archivo físico. Además, el certificado permite verificar criptográficamente que fue emitido por una autoridad legítima.
+
+  \item \textbf{¿Qué es el ``administrador espejo'' y cuándo debo usarlo?}
+
+  Es una copia de seguridad del administrador principal, mantenida automáticamente por el sistema en estado ``revocado''. Solo se usa en emergencias: si el admin principal pierde sus credenciales o no puede acceder, se activa el espejo para recuperar el control. Las credenciales del espejo deben guardarse en un lugar seguro y separado (por ejemplo, un sobre sellado).
+
+  \item \textbf{¿Qué pasa cuando mi cuenta expira?}
+
+  El estado cambia automáticamente a ``expired'' y no es posible iniciar sesión. El administrador puede renovar la cuenta actualizando la fecha de expiración y, si aplica, reemitiendo las credenciales criptográficas con la nueva vigencia.
+
+  \item \textbf{¿Cómo puedo verificar que un reporte PDF no fue alterado?}
+
+  Cada PDF incluye un hash SHA-256 en el pie de página, calculado sobre los datos tabulados del reporte. Para verificar: extraer los datos del PDF, recalcular el hash SHA-256 y comparar con el impreso. Si no coinciden, el contenido fue modificado.
+
+  \item \textbf{¿Puedo registrarme sin que un administrador me cree la cuenta?}
+
+  Sí, pero solo como \textbf{Voluntario}. Desde la página de login, seleccionar ``Solicitar acceso'' y completar el formulario. La cuenta queda en estado ``pending'' hasta que un administrador la active.
+
+  \item \textbf{¿Qué base de datos usa el sistema?}
+
+  En desarrollo usa \textbf{SQLite} (archivo \texttt{identity\_demo.db}). En producción se recomienda \textbf{PostgreSQL} configurando la variable \texttt{DATABASE\_URL}.
+
+  \item \textbf{¿Es seguro para producción real?}
+
+  El sistema implementa buenas prácticas (PBKDF2, RSA-2048, cookies firmadas, X.509). Para producción real se recomienda adicionalmente: HTTPS obligatorio, mayor número de iteraciones de PBKDF2, un HSM para la CA, rate limiting por IP, y un servicio de secretos externo (Vault, AWS KMS).
+
+  \item \textbf{¿Cuántos intentos de login tengo antes del bloqueo?}
+
+  \textbf{10 intentos}. Después del décimo intento fallido consecutivo, la cuenta se bloquea indefinidamente. Solo un administrador puede desbloquearla.
+
+\end{enumerate}
+
+% ============================================================================
+% CAPÍTULO 8 — REFERENCIAS
+% ============================================================================
+\chapter{Referencias}
+
+\begin{enumerate}[leftmargin=1cm]
+  \item FastAPI Documentation. Disponible en: \url{https://fastapi.tiangolo.com/}. Framework web utilizado para el desarrollo del servidor.
+
+  \item Python Cryptography Library. Disponible en: \url{https://cryptography.io/}. Biblioteca para operaciones criptográficas: RSA, X.509, PBKDF2, firmas digitales.
+
+  \item RFC 5280 --- Internet X.509 Public Key Infrastructure Certificate and CRL Profile. IETF. Estándar de certificados digitales X.509.
+
+  \item RFC 8017 --- PKCS \#1: RSA Cryptography Specifications Version 2.2. IETF. Esquemas de padding PKCS\#1 v1.5 y PSS.
+
+  \item RFC 2898 --- PKCS \#5: Password-Based Cryptography Specification Version 2.0. IETF. Especificación de PBKDF2.
+
+  \item OWASP Password Storage Cheat Sheet. Disponible en: \url{https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html}.
+
+  \item NIST SP 800-63B --- Digital Identity Guidelines: Authentication and Lifecycle Management. NIST.
+
+  \item SQLAlchemy 2.0 Documentation. Disponible en: \url{https://docs.sqlalchemy.org/}.
+
+  \item itsdangerous Documentation. Disponible en: \url{https://itsdangerous.palletsprojects.com/}.
+
+  \item Docker Documentation. Disponible en: \url{https://docs.docker.com/}.
+\end{enumerate}
+
+% ============================================================================
+\end{document}
