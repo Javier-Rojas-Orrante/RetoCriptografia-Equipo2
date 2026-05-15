@@ -402,7 +402,7 @@ def _render_crypto_flow(user, viewer_id: int, issuer_name: str | None = None, ve
             expiry = f" &middot; <span style='font-size:11px;color:var(--muted);'>V&aacute;lido hasta {user.certificate_not_after.strftime('%d/%m/%Y')}</span>"
         cert_val = f'<a href="/ui/users/{user.id}/certificate.pem{query}">Descargar certificado</a>{expiry}'
         if viewer_id != user.id:
-            cert_val = f'<a href="/ui/users/{user.id}/certificate/view?as_user={viewer_id}">Ver certificado de identidad</a>{expiry}'
+            cert_val = f'<a href="/ui/users/{user.id}/certificate/view?as_user={viewer_id}">Ver certificado de identidad</a> &middot; <a href="/ui/users/{user.id}/certificate.pem{query}">Descargar certificado</a>{expiry}'
     else:
         cert_val = "<span class='crypto-missing'>Certificado de identidad pendiente</span>"
 
@@ -1655,7 +1655,7 @@ def _render_beneficiarios_admin(actor, bens: list) -> str:
     """
 
 
-def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certificate_history, notice: str | None = None, beneficiarios=None, notifications=None, section: str = "usuarios") -> str:
+def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certificate_history, notice: str | None = None, error: str | None = None, beneficiarios=None, notifications=None, section: str = "usuarios") -> str:
     _name_parts = actor.full_name.split()
     _initials = (_name_parts[0][0] + (_name_parts[-1][0] if len(_name_parts) > 1 else "")).upper()
     permission_text = ", ".join(f"{item['resource']}:{item['action']}" for item in permissions) or "sin permisos"
@@ -1688,34 +1688,38 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
         user_uses_crypto = role_requires_crypto(user)
         activation_form = "<span class='muted'>Sin cambios pendientes</span>"
         if can_activate and user.status in {"pending", "revoked"}:
-            needs_new_secret = user_uses_crypto and user.status == "revoked" or (not user_uses_crypto and not user.password_hash)
-            if user_uses_crypto:
-                secret_field = f"""
-                <div>
-              <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">
-                    Contrase&ntilde;a para proteger los archivos de acceso
-                  </label>
-                  <input type="password" name="new_secret" placeholder="Contrase&ntilde;a de protecci&oacute;n"
-                    style="width:100%;" {'required' if needs_new_secret else ''}>
-                  <p style="font-size:11px;color:var(--muted);margin-top:4px;">
-                    Se generar&aacute;n archivos de acceso y certificado de identidad para este usuario.
-                  </p>
-                </div>
-                """
+            needs_new_secret = (user_uses_crypto and (user.status == "revoked" or not user.certificate_serial)) or (not user_uses_crypto and not user.password_hash)
+            if needs_new_secret:
+                if user_uses_crypto:
+                    secret_field = f"""
+                    <div>
+                      <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">
+                        Contrase&ntilde;a para proteger los archivos de acceso
+                      </label>
+                      <input type="password" name="new_secret" id="activate-secret-{user.id}" placeholder="Contrase&ntilde;a de protecci&oacute;n"
+                        style="width:100%;" required>
+                      <p style="font-size:11px;color:var(--muted);margin-top:4px;">
+                        Se generar&aacute;n archivos de acceso y certificado de identidad para este usuario.
+                      </p>
+                    </div>
+                    """
+                else:
+                    secret_field = f"""
+                    <div>
+                      <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">
+                        Nueva contrase&ntilde;a de acceso
+                      </label>
+                      <input type="password" name="new_secret" id="activate-secret-{user.id}" placeholder="Contrase&ntilde;a que usar&aacute; el usuario para entrar"
+                        style="width:100%;" required>
+                    </div>
+                    """
             else:
-                secret_field = f"""
-                <div>
-                  <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;">
-                    Nueva contrase&ntilde;a de acceso
-                  </label>
-                  <input type="password" name="new_secret" placeholder="Contrase&ntilde;a que usar&aacute; el usuario para entrar"
-                    style="width:100%;" {'required' if needs_new_secret else ''}>
-                </div>
-                """
+                secret_field = ""
             activation_form = f"""
             <form method="post" action="/ui/users/{user.id}/status" class="inline-form">
 
               <input type="hidden" name="status" value="active">
+              <input type="hidden" name="role_id" value="{user.role_id}" id="activate-role-{user.id}">
               {secret_field}
               <button type="submit">Activar</button>
             </form>
@@ -1724,7 +1728,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
         revoke_form = "<span class='muted'>Sin accion</span>"
         if can_revoke and user.status != "revoked":
             revoke_form = f"""
-            <form method="post" action="/ui/users/{user.id}/status" class="inline-form">
+            <form method="post" action="/ui/users/{user.id}/status" class="inline-form" style="margin-top:12px;">
 
               <input type="hidden" name="status" value="revoked">
               <button type="submit" class="danger-button">Revocar de emergencia</button>
@@ -1762,10 +1766,10 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
             role_form = f"""
             <form method="post" action="/ui/users/{user.id}/role" class="inline-form">
 
-              <select name="role_id">
-                {''.join(f"<option value='{role.id}' {'selected' if role.id == user.role_id else ''}>{escape(role.name)}</option>" for role in roles)}
+              <select name="role_id" onchange="var h=document.getElementById('activate-role-{user.id}');if(h)h.value=this.value;var opt=this.options[this.selectedIndex];var cr=opt.getAttribute('data-crypto')==='1';var pw=document.getElementById('role-secret-{user.id}');if(pw){{pw.style.display=cr?'':'none';pw.required=cr;if(!cr)pw.value='';}}var a=document.getElementById('activate-secret-{user.id}');if(pw&&a)a.value=pw.value;">
+                {''.join(f"<option value='{role.id}' data-crypto='{'1' if role.code in ('ADMIN','COORDINADOR') else '0'}' {'selected' if role.id == user.role_id else ''}>{escape(role.name)}</option>" for role in roles)}
               </select>
-              <input type="password" name="new_secret" placeholder="Contrase&ntilde;a para los archivos de acceso si cambias a este rol" required>
+              <input type="password" name="new_secret" id="role-secret-{user.id}" placeholder="Contrase&ntilde;a nueva (d&aacute;sela al usuario)" style="display:{'none' if not user_uses_crypto else ''}" {'required' if user_uses_crypto else ''} oninput="var a=document.getElementById('activate-secret-{user.id}');if(a)a.value=this.value;">
               <button type="submit">Guardar rol</button>
             </form>
             """
@@ -1793,13 +1797,18 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
                 issuer_name=user_name_lookup.get(user.certificate_issuer_user_id),
             )
             if not user.certificate_serial or missing_explicit_artifacts:
-                action_label = "Generar credenciales" if not user.certificate_serial else "Renovar credenciales"
-                certificate_section += f"""
-                <form method="post" action="/ui/users/{user.id}/certificate" class="inline-form" style="margin-top:10px;">
-                  <input type="password" name="credential_secret" placeholder="Contrase&ntilde;a de protecci&oacute;n" required>
-                  <button type="submit">{action_label}</button>
-                </form>
-                """
+                if not needs_new_secret:
+                    action_label = "Generar credenciales" if not user.certificate_serial else "Renovar credenciales"
+                    certificate_section += f"""
+                    <form method="post" action="/ui/users/{user.id}/certificate" class="inline-form" style="margin-top:10px;">
+                      <input type="password" name="credential_secret" placeholder="Contrase&ntilde;a de protecci&oacute;n" required>
+                      <button type="submit">{action_label}</button>
+                    </form>
+                    """
+                else:
+                    certificate_section += """
+                    <p class="muted" style="margin-top:8px;">Las credenciales se generar&aacute;n autom&aacute;ticamente al activar la cuenta.</p>
+                    """
             else:
                 certificate_section += """
                 <p class="muted" style="margin-top:8px;">Credenciales listas para entregar al usuario.</p>
@@ -1975,6 +1984,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
             {extra_btn}
           </div>
           {render_notice(notice)}
+          {f"<div class='error' style='background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:14px;'>{escape(error)}</div>" if error else ""}
         </section>"""
 
     _new_user_btn = f'<a href="/admin/register?as_user={actor.id}" style="display:inline-block;background:var(--accent);color:#fff;padding:8px 16px;border-radius:var(--radius);font-size:13px;font-weight:600;text-decoration:none;">+ Nuevo usuario</a>'
@@ -2559,7 +2569,7 @@ async def login(
             if is_active_admin(user):
                 resp = RedirectResponse(url=f"/dashboard?notice=crypto-login", status_code=303)
             else:
-                resp = RedirectResponse(url=f"/portal?verified=1&notice=crypto-login", status_code=303)
+                resp = RedirectResponse(url=f"/portal?verified=1", status_code=303)
             return _login_redirect(resp, user.id)
 
         user = PasswordLoginService.authenticate_user(db, identifier=identifier, password=password)
@@ -2755,6 +2765,7 @@ def health():
 def dashboard(
     section: str = Query(default="usuarios"),
     notice: str | None = Query(default=None),
+    error: str | None = Query(default=None),
     db: Session = Depends(get_db),
     actor=Depends(_get_session_actor),
 ):
@@ -2771,7 +2782,7 @@ def dashboard(
     NotificationService.check_expiring_certificates(db)
     NotificationService.check_expiring_users(db)
     notifications = NotificationService.list_all(db)
-    return HTMLResponse(render_dashboard(actor, users, roles, permissions, logs, backup_admin, certificate_history, notice, beneficiarios=BeneficiarioService.list_all(db), notifications=notifications, section=section))
+    return HTMLResponse(render_dashboard(actor, users, roles, permissions, logs, backup_admin, certificate_history, notice, error=error, beneficiarios=BeneficiarioService.list_all(db), notifications=notifications, section=section))
 
 
 @app.get("/api/me", response_model=MeOut)
@@ -2927,6 +2938,7 @@ def ui_change_status(
     user_id: int,
     status: str = Form(...),
     new_secret: str = Form(default=""),
+    role_id: int = Form(default=None),
     db: Session = Depends(get_db),
     actor=Depends(_get_session_actor),
 ):
@@ -2945,10 +2957,35 @@ def ui_change_status(
     resource, action, event_type = config[status]
     require_actor_permission(db, actor, resource, action)
 
+    # Apply role change before activation when the admin changed the role dropdown
+    role_changed = False
+    if status == "active" and role_id is not None and role_id != target.role_id:
+        require_actor_permission(db, actor, "users", "change_role")
+        try:
+            target = UserService.change_role(db, target, role_id, new_secret)
+        except ValueError as exc:
+            back_href = "/dashboard" if is_active_admin(actor) else "/portal"
+            url = f"{back_href}?{urlencode({'error': str(exc)})}"
+            return RedirectResponse(url=url, status_code=303)
+        role_changed = True
+        AuditService.log(
+            db,
+            event_type="role_changed",
+            actor_user_id=actor.id,
+            target_user_id=target.id,
+            action="change_role",
+            resource="users",
+            result="success",
+            metadata={"new_role_id": role_id},
+        )
+        db.refresh(target)
+
     try:
         updated = UserService.update_status(db, target, status, new_secret)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        back_href = "/dashboard" if is_active_admin(actor) else "/portal"
+        url = f"{back_href}?{urlencode({'error': str(exc)})}"
+        return RedirectResponse(url=url, status_code=303)
 
     metadata = {"credential_reset": bool(new_secret.strip())}
     if status == "revoked":
