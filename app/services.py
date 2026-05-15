@@ -312,6 +312,48 @@ class NotificationService:
                 created += 1
         return created
 
+    @staticmethod
+    def check_expiring_users(db: Session) -> int:
+        """Create notifications for active users whose end_date is within 30 days."""
+        cutoff = datetime.utcnow() + timedelta(days=NotificationService.EXPIRY_WARNING_DAYS)
+        users = list(
+            db.scalars(
+                select(User)
+                .options(joinedload(User.role))
+                .where(
+                    User.status == "active",
+                    User.end_date.is_not(None),
+                    User.end_date <= cutoff,
+                    User.end_date >= datetime.utcnow(),
+                    User.is_backup_admin.is_(False),
+                )
+            ).all()
+        )
+        created = 0
+        for user in users:
+            existing = db.scalar(
+                select(Notification).where(
+                    Notification.type == "user_expiring_soon",
+                    Notification.user_id == user.id,
+                    Notification.created_at >= datetime.utcnow() - timedelta(hours=24),
+                ).limit(1)
+            )
+            if not existing:
+                days_left = (user.end_date - datetime.utcnow()).days
+                NotificationService.create(
+                    db,
+                    type="user_expiring_soon",
+                    title=f"Usuario próximo a vencer: {user.full_name}",
+                    message=(
+                        f"La cuenta de {user.full_name} ({user.email}) expira en {days_left} día{'s' if days_left != 1 else ''} "
+                        f"({user.end_date.strftime('%Y-%m-%d')}). Renueva o desactiva la cuenta desde la sección Usuarios."
+                    ),
+                    user_id=user.id,
+                    metadata={"days_left": days_left, "expires": user.end_date.isoformat()},
+                )
+                created += 1
+        return created
+
 
 class PasswordService:
     iterations = 120_000

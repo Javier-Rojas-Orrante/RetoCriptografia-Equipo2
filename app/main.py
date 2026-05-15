@@ -59,6 +59,83 @@ def _make_session_cookie(user_id: int, notice: str | None = None) -> str:
     return _signer.dumps(payload)
 
 
+def _latin1_safe(text: str) -> str:
+    """Replace common non-latin-1 characters so fpdf Helvetica font doesn't crash."""
+    _REPLACEMENTS = {
+        "\u2014": "-",   # em dash
+        "\u2013": "-",   # en dash
+        "\u2018": "'",   # left single quote
+        "\u2019": "'",   # right single quote
+        "\u201c": '"',   # left double quote
+        "\u201d": '"',   # right double quote
+        "\u2026": "...", # ellipsis
+    }
+    for ch, rep in _REPLACEMENTS.items():
+        text = text.replace(ch, rep)
+    return text.encode("latin-1", errors="replace").decode("latin-1")
+
+
+def _pdf_report(
+    title: str,
+    subtitle: str,
+    col_headers: list[str],
+    col_widths: list[int],
+    rows: list[tuple],
+    generated_by: str,
+) -> bytes:
+    import hashlib
+    from fpdf import FPDF  # noqa: PLC0415 - lazy to avoid startup failure if not installed
+
+    data_lines = ["\t".join(col_headers)]
+    for row in rows:
+        data_lines.append("\t".join(str(c) for c in row))
+    sha256 = hashlib.sha256("\n".join(data_lines).encode()).hexdigest()
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_margins(15, 15, 15)
+
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, "Casa Monarca", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 7, _latin1_safe(title), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(107, 114, 128)
+    pdf.cell(0, 5, _latin1_safe(subtitle), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(6)
+
+    pdf.set_fill_color(26, 35, 50)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 9)
+    for hdr, w in zip(col_headers, col_widths):
+        pdf.cell(w, 8, hdr, border=1, fill=True)
+    pdf.ln()
+
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Helvetica", "", 8)
+    for i, row in enumerate(rows):
+        if i % 2 == 0:
+            pdf.set_fill_color(248, 247, 244)
+        else:
+            pdf.set_fill_color(255, 255, 255)
+        for cell, w in zip(row, col_widths):
+            pdf.cell(w, 7, _latin1_safe(str(cell))[:50], border=1, fill=True)
+        pdf.ln()
+
+    pdf.ln(8)
+    pdf.set_font("Helvetica", "", 7)
+    pdf.set_text_color(128, 128, 128)
+    generated_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    pdf.multi_cell(
+        0, 5,
+        _latin1_safe(f"Generado por: {generated_by} | {generated_at}\n"
+        f"Integridad SHA-256: {sha256}"),
+    )
+
+    return bytes(pdf.output())
+
+
 def _read_session_cookie(token: str | None) -> dict | None:
     if not token:
         return None
@@ -704,6 +781,10 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
     .alert-error{{background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:14px;}}
     .alert-ok{{background:#dcfce7;border:1px solid #86efac;color:#166534;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:14px;}}
     code{{background:#faf7f3;border:1px solid #e5ddd3;border-radius:4px;padding:1px 5px;font-family:'Courier New',monospace;font-size:11px;}}
+    .file-zone.has-file{{border-color:#22c55e;background:#f0fdf4;}}
+    .file-zone.has-file .file-zone-icon{{background:#dcfce7;border-color:#86efac;}}
+    .file-zone.has-file .file-zone-text{{color:#166534;}}
+    .file-zone.has-file .file-zone-sub{{color:#16a34a;}}
     details summary::-webkit-details-marker{{display:none;}}
   </style>
 </head>
@@ -735,8 +816,7 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
   </div>
   <!-- Card panel (RIGHT) -->
   <div class="lr">
-    <div class="card">
-      <div class="card-hdr">
+    <div class="card">      <div class="card-hdr">
         <div class="card-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e06020" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         </div>
@@ -763,10 +843,10 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e06020" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
             </div>
             <div>
-              <div class="file-zone-text">Arrastra tu archivo aqu&iacute;</div>
-              <div class="file-zone-sub">o selecciona un archivo</div>
+              <div class="file-zone-text" id="pkf-text">Arrastra tu archivo aqu&iacute;</div>
+              <div class="file-zone-sub" id="pkf-sub">o selecciona un archivo</div>
             </div>
-            <input type="file" name="private_key_file" accept=".pem,.key" id="pkf">
+            <input type="file" name="private_key_file" accept=".pem,.key" id="pkf" onchange="setFile('pkf',this)">
           </div>
         </label>
 
@@ -777,10 +857,10 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e06020" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
             </div>
             <div>
-              <div class="file-zone-text">Arrastra tu certificado aqu&iacute;</div>
-              <div class="file-zone-sub">o selecciona un archivo</div>
+              <div class="file-zone-text" id="cf-text">Arrastra tu certificado aqu&iacute;</div>
+              <div class="file-zone-sub" id="cf-sub">o selecciona un archivo</div>
             </div>
-            <input type="file" name="certificate_file" accept=".pem,.crt" id="cf">
+            <input type="file" name="certificate_file" accept=".pem,.crt" id="cf" onchange="setFile('cf',this)">
           </div>
         </label>
 
@@ -831,6 +911,23 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
     </div>
   </div>
 </body>
+<script>
+function setFile(id, input) {{
+  var zone = input.closest('.file-zone');
+  var textEl = document.getElementById(id + '-text');
+  var subEl = document.getElementById(id + '-sub');
+  if (input.files && input.files.length > 0) {{
+    var name = input.files[0].name;
+    textEl.textContent = name;
+    subEl.textContent = (input.files[0].size / 1024).toFixed(1) + ' KB \u2714';
+    zone.classList.add('has-file');
+  }} else {{
+    textEl.innerHTML = id === 'pkf' ? 'Arrastra tu archivo aqu\u00ed' : 'Arrastra tu certificado aqu\u00ed';
+    subEl.textContent = 'o selecciona un archivo';
+    zone.classList.remove('has-file');
+  }}
+}}
+</script>
 </html>"""
 
 
@@ -971,6 +1068,10 @@ def _build_portal_sections(actor, section: str = "cuenta") -> list:
     if actor.status == "active":
         sections.append((
             f"/portal?section=beneficiarios&as_user={aid}", "Beneficiarios", _PEOPLE_ICON_SVG, None, section == "beneficiarios",
+        ))
+    if actor.status == "active" and actor.role.code == "COORDINADOR":
+        sections.append((
+            f"/portal?section=directorio&as_user={aid}", "Directorio", _SHIELD_ICON_SVG, None, section == "directorio",
         ))
     return sections
 
@@ -1138,7 +1239,10 @@ def render_portal_page(
             for b in bens
         )
         demo_section = f"""
-        <div class="card" style="padding:24px;margin-top:18px;">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+          <a href="/ui/beneficiarios/export.pdf" style="display:inline-flex;align-items:center;gap:6px;background:#4b5563;color:#fff;padding:8px 16px;border-radius:var(--radius);font-size:13px;font-weight:600;text-decoration:none;">&#8595; Exportar PDF</a>
+        </div>
+        <div class="card" style="padding:24px;margin-top:0;">
           <h2 style="margin-bottom:6px;">Registrar beneficiario</h2>
           <p style="font-size:13px;color:#6b7280;margin-bottom:18px;">Captura los datos. El registro queda visible para todos los coordinadores y el nivel operativo.</p>
           <form method="post" action="/ui/beneficiarios">
@@ -1408,10 +1512,25 @@ def render_portal_page(
     <div class='error'>Tu cuenta est&aacute; en estado <strong>{escape(actor.status)}</strong>. Contacta a un administrador para restablecer el acceso.</div>
     """
 
+    _directorio_content = ""
+    if actor.role.code == "COORDINADOR" and actor.status == "active":
+        _directorio_content = f"""
+    <section style="margin-bottom:24px;">
+      <h1 class="page-title">Directorio de usuarios</h1>
+      <div class="page-title-accent"></div>
+      <p class="muted" style="font-size:14px;margin-top:2px;">Exporta el listado completo de usuarios del sistema.</p>
+    </section>
+    <div class="card" style="padding:28px;">
+      <p style="font-size:13px;color:#6b7280;margin-bottom:18px;">Genera un PDF con los datos de todos los usuarios registrados: nombre, correo, rol, estado y fecha de alta.</p>
+      <a href="/ui/users/export.pdf" style="display:inline-flex;align-items:center;gap:6px;background:#4b5563;color:#fff;padding:10px 20px;border-radius:var(--radius);font-size:13px;font-weight:600;text-decoration:none;">&#8595; Descargar PDF</a>
+    </div>
+    """
+
     _section_map = {
         "cuenta": _cuenta_content,
         "credenciales": _credenciales_content,
         "beneficiarios": _beneficiarios_content,
+        "directorio": _directorio_content,
     }
 
     body = f"""
@@ -1852,10 +1971,14 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
         </section>"""
 
     _new_user_btn = f'<a href="/admin/register?as_user={actor.id}" style="display:inline-block;background:var(--accent);color:#fff;padding:8px 16px;border-radius:var(--radius);font-size:13px;font-weight:600;text-decoration:none;">+ Nuevo usuario</a>'
+    _export_btn_style = "display:inline-flex;align-items:center;gap:6px;background:#4b5563;color:#fff;padding:8px 16px;border-radius:var(--radius);font-size:13px;font-weight:600;text-decoration:none;"
+    _export_users_btn = f'<a href="/ui/users/export.pdf" style="{_export_btn_style}">&#8595; Exportar PDF</a>'
+    _export_audit_btn = f'<a href="/ui/audit-logs/export.pdf" style="{_export_btn_style}">&#8595; Exportar PDF</a>'
+    _usuarios_header_btns = f'<div style="display:flex;gap:8px;flex-wrap:wrap;">{_new_user_btn}{_export_users_btn}</div>'
 
     # ── USUARIOS section ────────────────────────────────────────────────────
     _usuarios_content = f"""
-    {_sec_hdr("Gestión de usuarios", "Casa Monarca — Control de identidades y accesos del equipo operativo", _new_user_btn)}
+    {_sec_hdr("Gestión de usuarios", "Casa Monarca — Control de identidades y accesos del equipo operativo", _usuarios_header_btns)}
     <div class="grid">
       <div class="stat-card">
         <div class="stat-number">{len(users)}</div>
@@ -1938,7 +2061,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
 
     # ── AUDITORÍA section ───────────────────────────────────────────────────
     _auditoria_content = f"""
-    {_sec_hdr("Auditor&iacute;a", f"{len(logs)} eventos registrados")}
+    {_sec_hdr("Auditor&iacute;a", f"{len(logs)} eventos registrados", _export_audit_btn)}
     <div class="card" style="padding:20px 24px;">
       <ul style="font-size:13px;">{log_items}</ul>
     </div>
@@ -1982,8 +2105,9 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
         </div>"""
         for b in _bens
     )
+    _export_bens_btn = f'<a href="/ui/beneficiarios/export.pdf" style="{_export_btn_style}">&#8595; Exportar PDF</a>'
     _beneficiarios_content = f"""
-    {_sec_hdr("Beneficiarios", f"{len(_bens)} registros &mdash; {_bens_activos} activos")}
+    {_sec_hdr("Beneficiarios", f"{len(_bens)} registros &mdash; {_bens_activos} activos", _export_bens_btn)}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:18px;">
       <div style="padding:14px;background:#fff;border:1px solid #e5ddd3;border-radius:10px;"><p style="font-size:24px;font-weight:700;color:#1a2332;line-height:1;">{_bens_activos}</p><p style="font-size:11px;font-weight:600;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Activos</p></div>
       <div style="padding:14px;background:#fff;border:1px solid #e5ddd3;border-radius:10px;"><p style="font-size:24px;font-weight:700;color:#1a2332;line-height:1;">{len(_bens)}</p><p style="font-size:11px;font-weight:600;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:.05em;">Total</p></div>
@@ -2638,6 +2762,7 @@ def dashboard(
     backup_admin = AdminRecoveryService.get_backup_admin(db)
     certificate_history = UserService.list_certificate_history(db)
     NotificationService.check_expiring_certificates(db)
+    NotificationService.check_expiring_users(db)
     notifications = NotificationService.list_all(db)
     return HTMLResponse(render_dashboard(actor, users, roles, permissions, logs, backup_admin, certificate_history, notice, beneficiarios=BeneficiarioService.list_all(db), notifications=notifications, section=section))
 
@@ -2657,6 +2782,101 @@ def api_users(db: Session = Depends(get_db), actor=Depends(_get_session_actor)):
 def api_audit_logs(db: Session = Depends(get_db), actor=Depends(_get_session_actor)):
     require_actor_permission(db, actor, "audit", "view")
     return AuditService.list_recent(db, limit=50)
+
+
+@app.get("/ui/audit-logs/export.pdf")
+def export_audit_logs_pdf(db: Session = Depends(get_db), actor=Depends(_get_session_actor)):
+    if not is_active_admin(actor):
+        raise HTTPException(status_code=403)
+    logs = AuditService.list_recent(db, limit=200)
+    rows = [
+        (
+            log.created_at.strftime("%Y-%m-%d %H:%M") if log.created_at else "",
+            log.event_type or "",
+            log.action or "",
+            log.result or "",
+            log.ip_address or "-",
+        )
+        for log in logs
+    ]
+    pdf_bytes = _pdf_report(
+        title="Registro de Auditoría",
+        subtitle=f"{len(rows)} eventos - exportado para revision",
+        col_headers=["Fecha", "Evento", "Acción", "Resultado", "IP"],
+        col_widths=[38, 42, 50, 22, 28],
+        rows=rows,
+        generated_by=actor.full_name,
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=auditoria.pdf"},
+    )
+
+
+@app.get("/ui/users/export.pdf")
+def export_users_pdf(db: Session = Depends(get_db), actor=Depends(_get_session_actor)):
+    if not (actor.status == "active" and actor.role.code in ("ADMIN", "COORDINADOR")):
+        raise HTTPException(status_code=403)
+    users = UserService.list_users(db)
+    rows = [
+        (
+            u.full_name,
+            u.email,
+            u.role.name if u.role else "",
+            u.status,
+            u.created_at.strftime("%Y-%m-%d") if u.created_at else "",
+        )
+        for u in users
+    ]
+    pdf_bytes = _pdf_report(
+        title="Directorio de Usuarios",
+        subtitle=f"{len(rows)} usuarios registrados",
+        col_headers=["Nombre", "Correo", "Rol", "Estado", "Creado"],
+        col_widths=[48, 58, 28, 20, 26],
+        rows=rows,
+        generated_by=actor.full_name,
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=usuarios.pdf"},
+    )
+
+
+@app.get("/ui/beneficiarios/export.pdf")
+def export_beneficiarios_pdf(db: Session = Depends(get_db), actor=Depends(_get_session_actor)):
+    if not (actor.status == "active" and actor.role.code in ("ADMIN", "COORDINADOR")):
+        raise HTTPException(status_code=403)
+    AREA_LABELS = {
+        "ADMINISTRACION": "Administracion", "LEGAL": "Legal",
+        "PSICOSOCIAL": "Psicosocial", "HUMANITARIO": "Humanitario", "COMUNICACION": "Comunicacion",
+    }
+    STATUS_LABELS = {"nuevo": "Nuevo", "en_revision": "En revision", "canalizado": "Canalizado", "activo": "Activo"}
+    bens = BeneficiarioService.list_all(db)
+    rows = [
+        (
+            b.nombre_completo,
+            b.pais_origen,
+            AREA_LABELS.get(b.area, b.area),
+            STATUS_LABELS.get(b.status, b.status),
+            b.fecha_ingreso.strftime("%Y-%m-%d") if b.fecha_ingreso else "",
+        )
+        for b in bens
+    ]
+    pdf_bytes = _pdf_report(
+        title="Registro de Beneficiarios",
+        subtitle=f"{len(rows)} beneficiarios registrados",
+        col_headers=["Nombre", "Pais de origen", "Area", "Estado", "Ingreso"],
+        col_widths=[56, 40, 32, 24, 28],
+        rows=rows,
+        generated_by=actor.full_name,
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=beneficiarios.pdf"},
+    )
 
 
 @app.post("/ui/users")
