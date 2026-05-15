@@ -37,24 +37,29 @@ APP_DIR = Path(__file__).resolve().parent
 
 def _run_background_startup_tasks() -> None:
     try:
+        with Session(bind=engine) as db:
+            if settings.seed_demo_data:
+                BootstrapService.sync_managed_crypto_users(db)
+            else:
+                BootstrapService.seed(db)
+    except Exception:
+        # Keep the app serving traffic even if background bootstrap needs manual attention later.
+        pass
+    try:
         SchemaService.ensure_encrypted_storage()
     except Exception:
         # Keep the app serving traffic even if a later migration pass needs manual attention.
         pass
-    if settings.seed_demo_data:
-        try:
-            with Session(bind=engine) as db:
-                BootstrapService.sync_managed_crypto_users(db)
-        except Exception:
-            # Keep the app serving traffic even if certificate refresh needs manual attention later.
-            pass
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
-    with Session(bind=engine) as db:
-        BootstrapService.seed(db)
+    if settings.seed_demo_data:
+        with Session(bind=engine) as db:
+            BootstrapService.seed(db)
+    else:
+        SchemaService.prepare_runtime_schema()
     threading.Thread(target=_run_background_startup_tasks, daemon=True).start()
     yield
 
