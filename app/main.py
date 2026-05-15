@@ -37,7 +37,7 @@ APP_DIR = Path(__file__).resolve().parent
 
 def _run_background_db_encryption_migration() -> None:
     try:
-        SchemaService.migrate_plaintext_rows()
+        SchemaService.ensure_encrypted_storage()
     except Exception:
         # Keep the app serving traffic even if a later migration pass needs manual attention.
         pass

@@ -217,6 +217,32 @@ def _notification_type_lookup(value: str) -> str:
     return database_crypto.lookup_digest(value.strip()) or ""
 
 
+def _find_role_by_code(db: Session, code: str) -> Role | None:
+    for role in db.scalars(select(Role)).all():
+        if role.code == code:
+            return role
+    return None
+
+
+def _find_user_by_email(db: Session, email: str, *, joined: bool = False) -> User | None:
+    statement = select(User)
+    if joined:
+        statement = statement.options(joinedload(User.role))
+    clean_email = email.strip().lower()
+    for user in db.scalars(statement).all():
+        if user.email == clean_email:
+            return user
+    return None
+
+
+def _find_system_secret(db: Session, key: str) -> SystemSecret | None:
+    clean_key = key.strip()
+    for secret in db.scalars(select(SystemSecret)).all():
+        if secret.key == clean_key:
+            return secret
+    return None
+
+
 class AuditService:
     @staticmethod
     def log(
@@ -823,6 +849,12 @@ class SchemaService:
         cls.widen_encrypted_columns()
         cls.migrate_plaintext_rows(encrypt_payload=encrypt_payload)
 
+    @classmethod
+    def prepare_runtime_schema(cls) -> None:
+        cls.ensure_user_certificate_columns()
+        cls.ensure_audit_log_columns()
+        cls.ensure_lookup_columns()
+
 
 class CertificateAuthorityService:
     base_dir = Path(settings.certs_dir)
@@ -835,7 +867,7 @@ class CertificateAuthorityService:
 
     @classmethod
     def _set_secret(cls, db: Session, key: str, value: str) -> None:
-        secret = db.scalar(select(SystemSecret).where(SystemSecret.key_lookup == _secret_key_lookup(key)).limit(1))
+        secret = _find_system_secret(db, key)
         if secret:
             secret.value_text = value
             secret.updated_at = datetime.utcnow()
@@ -845,7 +877,7 @@ class CertificateAuthorityService:
 
     @classmethod
     def _get_secret(cls, db: Session, key: str) -> str | None:
-        secret = db.scalar(select(SystemSecret).where(SystemSecret.key_lookup == _secret_key_lookup(key)).limit(1))
+        secret = _find_system_secret(db, key)
         return secret.value_text if secret else None
 
     @classmethod
@@ -939,17 +971,13 @@ class AdminSignerService:
 
     @staticmethod
     def get_active_signing_admin(db: Session) -> User | None:
-        return db.scalar(
-            select(User)
-            .options(joinedload(User.role))
-            .join(Role)
-            .where(
-                Role.code_lookup == _role_code_lookup("ADMIN"),
-                User.status_lookup == _user_status_lookup("active"),
-            )
-            .order_by(User.is_backup_admin.asc(), User.id.asc())
-            .limit(1)
-        )
+        users = list(db.scalars(select(User).options(joinedload(User.role))).all())
+        candidates = [
+            user for user in users
+            if user.role and user.role.code == "ADMIN" and user.status == "active"
+        ]
+        candidates.sort(key=lambda user: (user.is_backup_admin, user.id))
+        return candidates[0] if candidates else None
 
     @classmethod
     def get_signing_material(cls, db: Session) -> tuple[User, rsa.RSAPrivateKey, x509.Certificate]:
@@ -1425,16 +1453,13 @@ class SignatureLoginService:
 class ExpirationService:
     @staticmethod
     def expire_users(db: Session) -> int:
-        users = list(
-            db.scalars(
-                select(User).where(
-                    User.status_lookup == _user_status_lookup("active"),
-                    User.is_backup_admin.is_(False),
-                    User.end_date.is_not(None),
-                    User.end_date < datetime.utcnow(),
-                )
-            ).all()
-        )
+        users = [
+            user for user in db.scalars(select(User)).all()
+            if user.status == "active"
+            and not user.is_backup_admin
+            and user.end_date is not None
+            and user.end_date < datetime.utcnow()
+        ]
 
         for user in users:
             user.status = "expired"
@@ -1480,28 +1505,17 @@ class AdminRecoveryService:
 
     @staticmethod
     def get_primary_admin(db: Session) -> User | None:
-        return db.scalar(
-            select(User)
-            .options(joinedload(User.role))
-            .join(Role)
-            .where(Role.code_lookup == _role_code_lookup("ADMIN"), User.is_backup_admin.is_(False))
-            .order_by(User.id.asc())
-            .limit(1)
-        )
+        users = list(db.scalars(select(User).options(joinedload(User.role))).all())
+        candidates = [user for user in users if user.role and user.role.code == "ADMIN" and not user.is_backup_admin]
+        candidates.sort(key=lambda user: user.id)
+        return candidates[0] if candidates else None
 
     @staticmethod
     def get_active_admin(db: Session) -> User | None:
-        return db.scalar(
-            select(User)
-            .options(joinedload(User.role))
-            .join(Role)
-            .where(
-                Role.code_lookup == _role_code_lookup("ADMIN"),
-                User.status_lookup == _user_status_lookup("active"),
-            )
-            .order_by(User.is_backup_admin.asc(), User.id.asc())
-            .limit(1)
-        )
+        users = list(db.scalars(select(User).options(joinedload(User.role))).all())
+        candidates = [user for user in users if user.role and user.role.code == "ADMIN" and user.status == "active"]
+        candidates.sort(key=lambda user: (user.is_backup_admin, user.id))
+        return candidates[0] if candidates else None
 
     @staticmethod
     def get_backup_admin(db: Session) -> User | None:
@@ -1526,7 +1540,7 @@ class AdminRecoveryService:
         if not backup:
             admin_role = primary.role
             candidate_email = cls.backup_email
-            if db.scalar(select(User).where(User.email_lookup == _email_lookup(candidate_email))):
+            if _find_user_by_email(db, candidate_email):
                 candidate_email = f"admin.respaldo.{primary.id}@demo.local"
             backup = User(
                 full_name=f"{primary.full_name} Respaldo",
@@ -1596,12 +1610,7 @@ class PasswordLoginService:
             return None
 
         if "@" in clean_identifier:
-            return db.scalar(
-                select(User)
-                .options(joinedload(User.role))
-                .where(User.email_lookup == _email_lookup(clean_identifier))
-                .limit(1)
-            )
+            return _find_user_by_email(db, clean_identifier, joined=True)
 
         if clean_identifier == "admin":
             primary = AdminRecoveryService.get_primary_admin(db)
@@ -1733,7 +1742,7 @@ class BootstrapService:
     def _ensure_demo_users(db: Session) -> None:
         roles_by_code = {role.code: role for role in db.scalars(select(Role)).all()}
         for item in DEMO_USERS:
-            user = db.scalar(select(User).where(User.email_lookup == _email_lookup(item["email"])).limit(1))
+            user = _find_user_by_email(db, item["email"])
             if user:
                 if not user.password_hash:
                     user.password_hash = PasswordService.hash_password(item["password"])
@@ -1764,16 +1773,11 @@ class BootstrapService:
         if not email:
             return None
 
-        admin_role = db.scalar(select(Role).where(Role.code_lookup == _role_code_lookup("ADMIN")).limit(1))
+        admin_role = _find_role_by_code(db, "ADMIN")
         if not admin_role:
             raise ValueError("No se pudo ubicar el rol ADMIN para inicializar el administrador")
 
-        user = db.scalar(
-            select(User)
-            .options(joinedload(User.role))
-            .where(User.email_lookup == _email_lookup(email))
-            .limit(1)
-        )
+        user = _find_user_by_email(db, email, joined=True)
         if user:
             if not user.role or user.role.code != "ADMIN":
                 raise ValueError(
@@ -1816,7 +1820,7 @@ class BootstrapService:
 
     @staticmethod
     def seed(db: Session) -> None:
-        SchemaService.ensure_encrypted_storage(encrypt_payload=False)
+        SchemaService.prepare_runtime_schema()
         CertificateAuthorityService.ensure_ca(db)
         BootstrapService._upsert_roles_and_permissions(db)
         db.commit()
@@ -1898,13 +1902,8 @@ class BeneficiarioService:
 
     @staticmethod
     def list_by_area(db: Session, area: str) -> list[Beneficiario]:
-        return list(
-            db.scalars(
-                select(Beneficiario)
-                .where(Beneficiario.area_lookup == _beneficiario_area_lookup(area))
-                .order_by(Beneficiario.fecha_ingreso.desc())
-            ).all()
-        )
+        items = list(db.scalars(select(Beneficiario).order_by(Beneficiario.fecha_ingreso.desc())).all())
+        return [item for item in items if item.area == area]
 
     @staticmethod
     def create(
@@ -1989,7 +1988,7 @@ class UserService:
         clean_name = full_name.strip()
         if not clean_name:
             raise ValueError("Debes indicar el nombre completo")
-        if db.scalar(select(User).where(User.email_lookup == _email_lookup(clean_email))):
+        if _find_user_by_email(db, clean_email):
             raise ValueError("Ya existe un usuario con ese correo")
 
         role = db.get(Role, role_id)
@@ -2070,7 +2069,7 @@ class UserService:
 
     @staticmethod
     def get_role_by_code(db: Session, code: str) -> Role | None:
-        return db.scalar(select(Role).where(Role.code_lookup == _role_code_lookup(code)).limit(1))
+        return _find_role_by_code(db, code)
 
     @staticmethod
     def update_status(db: Session, user: User, status: str, new_secret: str = "") -> User:
