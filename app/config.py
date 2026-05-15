@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     session_secret: str = DEFAULT_SESSION_SECRET
     session_cookie_secure: bool | None = None
     seed_demo_data: bool = True
-    allow_demo_admin_bypass: bool | None = None
+    allow_demo_admin_bypass: bool | None = True
     bootstrap_admin_full_name: str = "Administrador General"
     bootstrap_admin_email: str | None = None
     bootstrap_admin_password: str | None = None

@@ -1,4 +1,3 @@
-import threading
 from contextlib import asynccontextmanager
 from datetime import datetime
 from html import escape
@@ -33,25 +32,6 @@ from app.services import (
 
 
 APP_DIR = Path(__file__).resolve().parent
-
-
-def _run_background_startup_tasks() -> None:
-    try:
-        with Session(bind=engine) as db:
-            if settings.seed_demo_data:
-                BootstrapService.sync_managed_crypto_users(db)
-            else:
-                BootstrapService.seed(db)
-    except Exception:
-        # Keep the app serving traffic even if background bootstrap needs manual attention later.
-        pass
-    try:
-        SchemaService.ensure_encrypted_storage()
-    except Exception:
-        # Keep the app serving traffic even if a later migration pass needs manual attention.
-        pass
-
-
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
@@ -60,7 +40,6 @@ async def lifespan(_: FastAPI):
             BootstrapService.seed(db)
     else:
         SchemaService.prepare_runtime_schema()
-    threading.Thread(target=_run_background_startup_tasks, daemon=True).start()
     yield
 
 
