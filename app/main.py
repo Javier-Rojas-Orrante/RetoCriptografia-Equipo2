@@ -35,12 +35,19 @@ from app.services import (
 APP_DIR = Path(__file__).resolve().parent
 
 
-def _run_background_db_encryption_migration() -> None:
+def _run_background_startup_tasks() -> None:
     try:
         SchemaService.ensure_encrypted_storage()
     except Exception:
         # Keep the app serving traffic even if a later migration pass needs manual attention.
         pass
+    if settings.seed_demo_data:
+        try:
+            with Session(bind=engine) as db:
+                BootstrapService.sync_managed_crypto_users(db)
+        except Exception:
+            # Keep the app serving traffic even if certificate refresh needs manual attention later.
+            pass
 
 
 @asynccontextmanager
@@ -48,7 +55,7 @@ async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
     with Session(bind=engine) as db:
         BootstrapService.seed(db)
-    threading.Thread(target=_run_background_db_encryption_migration, daemon=True).start()
+    threading.Thread(target=_run_background_startup_tasks, daemon=True).start()
     yield
 
 

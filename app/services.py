@@ -1875,6 +1875,10 @@ class BootstrapService:
         if settings.seed_demo_data:
             BeneficiarioService.seed_demo(db)
 
+    @staticmethod
+    def sync_managed_crypto_users(db: Session) -> None:
+        """Complete certificate issuance/refresh after the app is already serving traffic."""
+
         users = list(db.scalars(select(User).options(joinedload(User.role))).all())
         users.sort(key=lambda user: (0 if user.role.code == "ADMIN" else 1, user.id))
         for user in users:
