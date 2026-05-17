@@ -16,11 +16,12 @@ class Settings(BaseSettings):
     app_port: int = Field(default=8000, validation_alias=AliasChoices("APP_PORT", "PORT"))
     environment: str = "development"
     database_url: str = DEFAULT_DATABASE_URL
+    database_encryption_key: str = ""
     certs_dir: Path = DEFAULT_CERTS_DIR
     session_secret: str = DEFAULT_SESSION_SECRET
     session_cookie_secure: bool | None = None
     seed_demo_data: bool = True
-    allow_demo_admin_bypass: bool | None = None
+    allow_demo_admin_bypass: bool | None = True
     bootstrap_admin_full_name: str = "Administrador General"
     bootstrap_admin_email: str | None = None
     bootstrap_admin_password: str | None = None

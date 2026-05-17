@@ -2,6 +2,7 @@ import base64
 import binascii
 import hashlib
 import hmac
+import json
 import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -15,6 +16,7 @@ from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
+from app.crypto import database_crypto
 from app.db import engine
 from app.models import AuditLog, Beneficiario, Notification, Permission, Role, RolePermission, SystemSecret, User
 
@@ -191,6 +193,56 @@ def _demo_secret_for_user(user: User) -> str:
     return DEFAULT_PASSWORD
 
 
+def _email_lookup(email: str) -> str:
+    return database_crypto.lookup_digest(email.strip().lower()) or ""
+
+
+def _role_code_lookup(code: str) -> str:
+    return database_crypto.lookup_digest(code.strip()) or ""
+
+
+def _user_status_lookup(status: str) -> str:
+    return database_crypto.lookup_digest(status.strip()) or ""
+
+
+def _secret_key_lookup(key: str) -> str:
+    return database_crypto.lookup_digest(key.strip()) or ""
+
+
+def _beneficiario_area_lookup(area: str) -> str:
+    return database_crypto.lookup_digest(area.strip()) or ""
+
+
+def _notification_type_lookup(value: str) -> str:
+    return database_crypto.lookup_digest(value.strip()) or ""
+
+
+def _find_role_by_code(db: Session, code: str) -> Role | None:
+    for role in db.scalars(select(Role)).all():
+        if role.code == code:
+            return role
+    return None
+
+
+def _find_user_by_email(db: Session, email: str, *, joined: bool = False) -> User | None:
+    statement = select(User)
+    if joined:
+        statement = statement.options(joinedload(User.role))
+    clean_email = email.strip().lower()
+    for user in db.scalars(statement).all():
+        if user.email == clean_email:
+            return user
+    return None
+
+
+def _find_system_secret(db: Session, key: str) -> SystemSecret | None:
+    clean_key = key.strip()
+    for secret in db.scalars(select(SystemSecret)).all():
+        if secret.key == clean_key:
+            return secret
+    return None
+
+
 class AuditService:
     @staticmethod
     def log(
@@ -281,7 +333,7 @@ class NotificationService:
                 select(User)
                 .options(joinedload(User.role))
                 .where(
-                    User.status == "active",
+                    User.status_lookup == _user_status_lookup("active"),
                     User.certificate_not_after.is_not(None),
                     User.certificate_not_after <= cutoff,
                     User.certificate_not_after >= datetime.utcnow(),
@@ -294,7 +346,7 @@ class NotificationService:
             # No crear duplicados: solo si no hay una de este tipo para este usuario en las últimas 24h
             existing = db.scalar(
                 select(Notification).where(
-                    Notification.type == "cert_expiring_soon",
+                    Notification.type_lookup == _notification_type_lookup("cert_expiring_soon"),
                     Notification.user_id == user.id,
                     Notification.created_at >= datetime.utcnow() - timedelta(hours=24),
                 ).limit(1)
@@ -321,7 +373,7 @@ class NotificationService:
                 select(User)
                 .options(joinedload(User.role))
                 .where(
-                    User.status == "active",
+                    User.status_lookup == _user_status_lookup("active"),
                     User.end_date.is_not(None),
                     User.end_date <= cutoff,
                     User.end_date >= datetime.utcnow(),
@@ -333,7 +385,7 @@ class NotificationService:
         for user in users:
             existing = db.scalar(
                 select(Notification).where(
-                    Notification.type == "user_expiring_soon",
+                    Notification.type_lookup == _notification_type_lookup("user_expiring_soon"),
                     Notification.user_id == user.id,
                     Notification.created_at >= datetime.utcnow() - timedelta(hours=24),
                 ).limit(1)
@@ -390,6 +442,44 @@ class PasswordService:
 
 
 class SchemaService:
+    lookup_columns = {
+        "beneficiarios": {"area_lookup": "VARCHAR(80)"},
+        "roles": {"code_lookup": "VARCHAR(80)"},
+        "users": {
+            "email_lookup": "VARCHAR(80)",
+            "status_lookup": "VARCHAR(80)",
+        },
+        "system_secrets": {"key_lookup": "VARCHAR(80)"},
+        "notifications": {"type_lookup": "VARCHAR(80)"},
+    }
+    lookup_indexes = (
+        ("uq_roles_code_lookup", "roles", "code_lookup", True),
+        ("uq_users_email_lookup", "users", "email_lookup", True),
+        ("ix_users_status_lookup", "users", "status_lookup", False),
+        ("uq_system_secrets_key_lookup", "system_secrets", "key_lookup", True),
+        ("ix_beneficiarios_area_lookup", "beneficiarios", "area_lookup", False),
+        ("ix_notifications_type_lookup", "notifications", "type_lookup", False),
+    )
+    encrypted_text_columns = {
+        "beneficiarios": ["nombre_completo", "pais_origen", "area", "status", "notas"],
+        "roles": ["code", "name"],
+        "users": [
+            "email",
+            "full_name",
+            "status",
+            "certificate_serial",
+            "certificate_pem",
+            "public_key_pem",
+            "private_key_pem_encrypted",
+            "certificate_issuer_pem",
+            "password_hash",
+        ],
+        "permissions": ["resource", "action"],
+        "audit_logs": ["event_type", "action", "resource", "result", "metadata_json", "ip_address", "user_agent"],
+        "system_secrets": ["key", "value_text"],
+        "notifications": ["type", "title", "message", "metadata_json"],
+    }
+
     @staticmethod
     def ensure_user_certificate_columns() -> None:
         inspector = inspect(engine)
@@ -437,6 +527,355 @@ class SchemaService:
                 if column_name not in current_columns:
                     connection.execute(text(f"ALTER TABLE audit_logs ADD COLUMN {column_name} {column_type}"))
 
+    @staticmethod
+    def ensure_lookup_columns() -> None:
+        inspector = inspect(engine)
+        table_names = set(inspector.get_table_names())
+        with engine.begin() as connection:
+            for table_name, columns in SchemaService.lookup_columns.items():
+                if table_name not in table_names:
+                    continue
+                current_columns = {column["name"] for column in inspector.get_columns(table_name)}
+                for column_name, column_type in columns.items():
+                    if column_name not in current_columns:
+                        connection.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"))
+
+    @staticmethod
+    def ensure_lookup_indexes() -> None:
+        inspector = inspect(engine)
+        table_names = set(inspector.get_table_names())
+
+        if engine.dialect.name == "postgresql":
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+                for index_name, table_name, column_name, is_unique in SchemaService.lookup_indexes:
+                    if table_name not in table_names:
+                        continue
+                    uniqueness = "UNIQUE " if is_unique else ""
+                    connection.execute(
+                        text(
+                            f"CREATE {uniqueness}INDEX CONCURRENTLY IF NOT EXISTS {index_name} "
+                            f"ON {table_name} ({column_name})"
+                        )
+                    )
+            return
+
+        with engine.begin() as connection:
+            for index_name, table_name, column_name, is_unique in SchemaService.lookup_indexes:
+                if table_name not in table_names:
+                    continue
+                uniqueness = "UNIQUE " if is_unique else ""
+                connection.execute(
+                    text(
+                        f"CREATE {uniqueness}INDEX IF NOT EXISTS {index_name} "
+                        f"ON {table_name} ({column_name})"
+                    )
+                )
+
+    @staticmethod
+    def widen_encrypted_columns() -> None:
+        if engine.dialect.name != "postgresql":
+            return
+
+        inspector = inspect(engine)
+        table_names = set(inspector.get_table_names())
+        with engine.begin() as connection:
+            for table_name, columns in SchemaService.encrypted_text_columns.items():
+                if table_name not in table_names:
+                    continue
+                current_columns = {column["name"] for column in inspector.get_columns(table_name)}
+                for column_name in columns:
+                    if column_name not in current_columns:
+                        continue
+                    connection.execute(
+                        text(
+                            f"ALTER TABLE {table_name} "
+                            f"ALTER COLUMN {column_name} TYPE TEXT "
+                            f"USING {column_name}::text"
+                        )
+                    )
+
+    @staticmethod
+    def _json_plain_text(value) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str) and not database_crypto.is_encrypted(value):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError:
+                parsed = value
+        else:
+            parsed = database_crypto.json_from_storage(value)
+        return json.dumps(parsed, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+    @staticmethod
+    def migrate_plaintext_rows(encrypt_payload: bool = True) -> None:
+        inspector = inspect(engine)
+        table_names = set(inspector.get_table_names())
+        with engine.begin() as connection:
+            if "beneficiarios" in table_names:
+                rows = connection.execute(
+                    text(
+                        "SELECT id, nombre_completo, pais_origen, area, status, notas, area_lookup "
+                        "FROM beneficiarios"
+                    )
+                ).mappings()
+                for row in rows:
+                    updates = {}
+                    for column_name in ("nombre_completo", "pais_origen", "area", "status", "notas"):
+                        value = row[column_name]
+                        if encrypt_payload and value is not None and not database_crypto.is_encrypted(value):
+                            updates[column_name] = database_crypto.encrypt_text(str(value))
+                    area_plain = database_crypto.decrypt_text(row["area"])
+                    if area_plain:
+                        lookup = _beneficiario_area_lookup(area_plain)
+                        if row["area_lookup"] != lookup:
+                            updates["area_lookup"] = lookup
+                    if updates:
+                        connection.execute(
+                            text(
+                                "UPDATE beneficiarios SET "
+                                "nombre_completo = COALESCE(:nombre_completo, nombre_completo), "
+                                "pais_origen = COALESCE(:pais_origen, pais_origen), "
+                                "area = COALESCE(:area, area), "
+                                "status = COALESCE(:status, status), "
+                                "notas = COALESCE(:notas, notas), "
+                                "area_lookup = COALESCE(:area_lookup, area_lookup) "
+                                "WHERE id = :id"
+                            ),
+                            {"id": row["id"], **{k: updates.get(k) for k in ("nombre_completo", "pais_origen", "area", "status", "notas", "area_lookup")}},
+                        )
+
+            if "roles" in table_names:
+                rows = connection.execute(text("SELECT id, code, name, code_lookup FROM roles")).mappings()
+                for row in rows:
+                    updates = {}
+                    for column_name in ("code", "name"):
+                        value = row[column_name]
+                        if encrypt_payload and value is not None and not database_crypto.is_encrypted(value):
+                            updates[column_name] = database_crypto.encrypt_text(str(value))
+                    code_plain = database_crypto.decrypt_text(row["code"])
+                    if code_plain:
+                        lookup = _role_code_lookup(code_plain)
+                        if row["code_lookup"] != lookup:
+                            updates["code_lookup"] = lookup
+                    if updates:
+                        connection.execute(
+                            text(
+                                "UPDATE roles SET "
+                                "code = COALESCE(:code, code), "
+                                "name = COALESCE(:name, name), "
+                                "code_lookup = COALESCE(:code_lookup, code_lookup) "
+                                "WHERE id = :id"
+                            ),
+                            {"id": row["id"], "code": updates.get("code"), "name": updates.get("name"), "code_lookup": updates.get("code_lookup")},
+                        )
+
+            if "users" in table_names:
+                rows = connection.execute(
+                    text(
+                        "SELECT id, email, full_name, status, certificate_serial, certificate_pem, public_key_pem, "
+                        "private_key_pem_encrypted, certificate_issuer_pem, password_hash, email_lookup, status_lookup "
+                        "FROM users"
+                    )
+                ).mappings()
+                for row in rows:
+                    updates = {}
+                    for column_name in (
+                        "email",
+                        "full_name",
+                        "status",
+                        "certificate_serial",
+                        "certificate_pem",
+                        "public_key_pem",
+                        "private_key_pem_encrypted",
+                        "certificate_issuer_pem",
+                        "password_hash",
+                    ):
+                        value = row[column_name]
+                        if encrypt_payload and value is not None and not database_crypto.is_encrypted(value):
+                            updates[column_name] = database_crypto.encrypt_text(str(value))
+                    email_plain = database_crypto.decrypt_text(row["email"])
+                    if email_plain:
+                        lookup = _email_lookup(email_plain)
+                        if row["email_lookup"] != lookup:
+                            updates["email_lookup"] = lookup
+                    status_plain = database_crypto.decrypt_text(row["status"])
+                    if status_plain:
+                        lookup = _user_status_lookup(status_plain)
+                        if row["status_lookup"] != lookup:
+                            updates["status_lookup"] = lookup
+                    if updates:
+                        connection.execute(
+                            text(
+                                "UPDATE users SET "
+                                "email = COALESCE(:email, email), "
+                                "full_name = COALESCE(:full_name, full_name), "
+                                "status = COALESCE(:status, status), "
+                                "certificate_serial = COALESCE(:certificate_serial, certificate_serial), "
+                                "certificate_pem = COALESCE(:certificate_pem, certificate_pem), "
+                                "public_key_pem = COALESCE(:public_key_pem, public_key_pem), "
+                                "private_key_pem_encrypted = COALESCE(:private_key_pem_encrypted, private_key_pem_encrypted), "
+                                "certificate_issuer_pem = COALESCE(:certificate_issuer_pem, certificate_issuer_pem), "
+                                "password_hash = COALESCE(:password_hash, password_hash), "
+                                "email_lookup = COALESCE(:email_lookup, email_lookup), "
+                                "status_lookup = COALESCE(:status_lookup, status_lookup) "
+                                "WHERE id = :id"
+                            ),
+                            {
+                                "id": row["id"],
+                                "email": updates.get("email"),
+                                "full_name": updates.get("full_name"),
+                                "status": updates.get("status"),
+                                "certificate_serial": updates.get("certificate_serial"),
+                                "certificate_pem": updates.get("certificate_pem"),
+                                "public_key_pem": updates.get("public_key_pem"),
+                                "private_key_pem_encrypted": updates.get("private_key_pem_encrypted"),
+                                "certificate_issuer_pem": updates.get("certificate_issuer_pem"),
+                                "password_hash": updates.get("password_hash"),
+                                "email_lookup": updates.get("email_lookup"),
+                                "status_lookup": updates.get("status_lookup"),
+                            },
+                        )
+
+            if "permissions" in table_names:
+                rows = connection.execute(text("SELECT id, resource, action FROM permissions")).mappings()
+                for row in rows:
+                    updates = {}
+                    for column_name in ("resource", "action"):
+                        value = row[column_name]
+                        if encrypt_payload and value is not None and not database_crypto.is_encrypted(value):
+                            updates[column_name] = database_crypto.encrypt_text(str(value))
+                    if updates:
+                        connection.execute(
+                            text(
+                                "UPDATE permissions SET "
+                                "resource = COALESCE(:resource, resource), "
+                                "action = COALESCE(:action, action) "
+                                "WHERE id = :id"
+                            ),
+                            {"id": row["id"], "resource": updates.get("resource"), "action": updates.get("action")},
+                        )
+
+            if "audit_logs" in table_names:
+                rows = connection.execute(
+                    text("SELECT id, event_type, action, resource, result, metadata_json, ip_address, user_agent FROM audit_logs")
+                ).mappings()
+                for row in rows:
+                    updates = {}
+                    for column_name in ("event_type", "action", "resource", "result", "ip_address", "user_agent"):
+                        value = row[column_name]
+                        if encrypt_payload and value is not None and not database_crypto.is_encrypted(value):
+                            updates[column_name] = database_crypto.encrypt_text(str(value))
+                    metadata_value = row["metadata_json"]
+                    if encrypt_payload and metadata_value is not None and not database_crypto.is_encrypted(metadata_value):
+                        updates["metadata_json"] = database_crypto.encrypt_text(SchemaService._json_plain_text(metadata_value))
+                    if updates:
+                        connection.execute(
+                            text(
+                                "UPDATE audit_logs SET "
+                                "event_type = COALESCE(:event_type, event_type), "
+                                "action = COALESCE(:action, action), "
+                                "resource = COALESCE(:resource, resource), "
+                                "result = COALESCE(:result, result), "
+                                "metadata_json = COALESCE(:metadata_json, metadata_json), "
+                                "ip_address = COALESCE(:ip_address, ip_address), "
+                                "user_agent = COALESCE(:user_agent, user_agent) "
+                                "WHERE id = :id"
+                            ),
+                            {
+                                "id": row["id"],
+                                "event_type": updates.get("event_type"),
+                                "action": updates.get("action"),
+                                "resource": updates.get("resource"),
+                                "result": updates.get("result"),
+                                "metadata_json": updates.get("metadata_json"),
+                                "ip_address": updates.get("ip_address"),
+                                "user_agent": updates.get("user_agent"),
+                            },
+                        )
+
+            if "system_secrets" in table_names:
+                rows = connection.execute(text("SELECT id, key, value_text, key_lookup FROM system_secrets")).mappings()
+                for row in rows:
+                    updates = {}
+                    for column_name in ("key", "value_text"):
+                        value = row[column_name]
+                        if encrypt_payload and value is not None and not database_crypto.is_encrypted(value):
+                            updates[column_name] = database_crypto.encrypt_text(str(value))
+                    key_plain = database_crypto.decrypt_text(row["key"])
+                    if key_plain:
+                        lookup = _secret_key_lookup(key_plain)
+                        if row["key_lookup"] != lookup:
+                            updates["key_lookup"] = lookup
+                    if updates:
+                        connection.execute(
+                            text(
+                                "UPDATE system_secrets SET "
+                                "key = COALESCE(:key, key), "
+                                "value_text = COALESCE(:value_text, value_text), "
+                                "key_lookup = COALESCE(:key_lookup, key_lookup) "
+                                "WHERE id = :id"
+                            ),
+                            {
+                                "id": row["id"],
+                                "key": updates.get("key"),
+                                "value_text": updates.get("value_text"),
+                                "key_lookup": updates.get("key_lookup"),
+                            },
+                        )
+
+            if "notifications" in table_names:
+                rows = connection.execute(text("SELECT id, type, title, message, metadata_json, type_lookup FROM notifications")).mappings()
+                for row in rows:
+                    updates = {}
+                    for column_name in ("type", "title", "message"):
+                        value = row[column_name]
+                        if encrypt_payload and value is not None and not database_crypto.is_encrypted(value):
+                            updates[column_name] = database_crypto.encrypt_text(str(value))
+                    metadata_value = row["metadata_json"]
+                    if encrypt_payload and metadata_value is not None and not database_crypto.is_encrypted(metadata_value):
+                        updates["metadata_json"] = database_crypto.encrypt_text(SchemaService._json_plain_text(metadata_value))
+                    type_plain = database_crypto.decrypt_text(row["type"])
+                    if type_plain:
+                        lookup = _notification_type_lookup(type_plain)
+                        if row["type_lookup"] != lookup:
+                            updates["type_lookup"] = lookup
+                    if updates:
+                        connection.execute(
+                            text(
+                                "UPDATE notifications SET "
+                                "type = COALESCE(:type, type), "
+                                "title = COALESCE(:title, title), "
+                                "message = COALESCE(:message, message), "
+                                "metadata_json = COALESCE(:metadata_json, metadata_json), "
+                                "type_lookup = COALESCE(:type_lookup, type_lookup) "
+                                "WHERE id = :id"
+                            ),
+                            {
+                                "id": row["id"],
+                                "type": updates.get("type"),
+                                "title": updates.get("title"),
+                                "message": updates.get("message"),
+                                "metadata_json": updates.get("metadata_json"),
+                                "type_lookup": updates.get("type_lookup"),
+                            },
+                        )
+
+    @classmethod
+    def ensure_encrypted_storage(cls, *, encrypt_payload: bool = True) -> None:
+        cls.ensure_user_certificate_columns()
+        cls.ensure_audit_log_columns()
+        cls.ensure_lookup_columns()
+        cls.widen_encrypted_columns()
+        cls.migrate_plaintext_rows(encrypt_payload=encrypt_payload)
+        cls.ensure_lookup_indexes()
+
+    @classmethod
+    def prepare_runtime_schema(cls) -> None:
+        cls.ensure_user_certificate_columns()
+        cls.ensure_audit_log_columns()
+        cls.ensure_lookup_columns()
+
 
 class CertificateAuthorityService:
     base_dir = Path(settings.certs_dir)
@@ -449,7 +888,7 @@ class CertificateAuthorityService:
 
     @classmethod
     def _set_secret(cls, db: Session, key: str, value: str) -> None:
-        secret = db.scalar(select(SystemSecret).where(SystemSecret.key == key).limit(1))
+        secret = _find_system_secret(db, key)
         if secret:
             secret.value_text = value
             secret.updated_at = datetime.utcnow()
@@ -459,7 +898,7 @@ class CertificateAuthorityService:
 
     @classmethod
     def _get_secret(cls, db: Session, key: str) -> str | None:
-        secret = db.scalar(select(SystemSecret).where(SystemSecret.key == key).limit(1))
+        secret = _find_system_secret(db, key)
         return secret.value_text if secret else None
 
     @classmethod
@@ -553,14 +992,13 @@ class AdminSignerService:
 
     @staticmethod
     def get_active_signing_admin(db: Session) -> User | None:
-        return db.scalar(
-            select(User)
-            .options(joinedload(User.role))
-            .join(Role)
-            .where(Role.code == "ADMIN", User.status == "active")
-            .order_by(User.is_backup_admin.asc(), User.id.asc())
-            .limit(1)
-        )
+        users = list(db.scalars(select(User).options(joinedload(User.role))).all())
+        candidates = [
+            user for user in users
+            if user.role and user.role.code == "ADMIN" and user.status == "active"
+        ]
+        candidates.sort(key=lambda user: (user.is_backup_admin, user.id))
+        return candidates[0] if candidates else None
 
     @classmethod
     def get_signing_material(cls, db: Session) -> tuple[User, rsa.RSAPrivateKey, x509.Certificate]:
@@ -1036,16 +1474,13 @@ class SignatureLoginService:
 class ExpirationService:
     @staticmethod
     def expire_users(db: Session) -> int:
-        users = list(
-            db.scalars(
-                select(User).where(
-                    User.status == "active",
-                    User.is_backup_admin.is_(False),
-                    User.end_date.is_not(None),
-                    User.end_date < datetime.utcnow(),
-                )
-            ).all()
-        )
+        users = [
+            user for user in db.scalars(select(User)).all()
+            if user.status == "active"
+            and not user.is_backup_admin
+            and user.end_date is not None
+            and user.end_date < datetime.utcnow()
+        ]
 
         for user in users:
             user.status = "expired"
@@ -1091,25 +1526,17 @@ class AdminRecoveryService:
 
     @staticmethod
     def get_primary_admin(db: Session) -> User | None:
-        return db.scalar(
-            select(User)
-            .options(joinedload(User.role))
-            .join(Role)
-            .where(Role.code == "ADMIN", User.is_backup_admin.is_(False))
-            .order_by(User.id.asc())
-            .limit(1)
-        )
+        users = list(db.scalars(select(User).options(joinedload(User.role))).all())
+        candidates = [user for user in users if user.role and user.role.code == "ADMIN" and not user.is_backup_admin]
+        candidates.sort(key=lambda user: user.id)
+        return candidates[0] if candidates else None
 
     @staticmethod
     def get_active_admin(db: Session) -> User | None:
-        return db.scalar(
-            select(User)
-            .options(joinedload(User.role))
-            .join(Role)
-            .where(Role.code == "ADMIN", User.status == "active")
-            .order_by(User.is_backup_admin.asc(), User.id.asc())
-            .limit(1)
-        )
+        users = list(db.scalars(select(User).options(joinedload(User.role))).all())
+        candidates = [user for user in users if user.role and user.role.code == "ADMIN" and user.status == "active"]
+        candidates.sort(key=lambda user: (user.is_backup_admin, user.id))
+        return candidates[0] if candidates else None
 
     @staticmethod
     def get_backup_admin(db: Session) -> User | None:
@@ -1134,7 +1561,7 @@ class AdminRecoveryService:
         if not backup:
             admin_role = primary.role
             candidate_email = cls.backup_email
-            if db.scalar(select(User).where(User.email == candidate_email)):
+            if _find_user_by_email(db, candidate_email):
                 candidate_email = f"admin.respaldo.{primary.id}@demo.local"
             backup = User(
                 full_name=f"{primary.full_name} Respaldo",
@@ -1204,12 +1631,7 @@ class PasswordLoginService:
             return None
 
         if "@" in clean_identifier:
-            return db.scalar(
-                select(User)
-                .options(joinedload(User.role))
-                .where(User.email == clean_identifier)
-                .limit(1)
-            )
+            return _find_user_by_email(db, clean_identifier, joined=True)
 
         if clean_identifier == "admin":
             primary = AdminRecoveryService.get_primary_admin(db)
@@ -1219,13 +1641,18 @@ class PasswordLoginService:
             if active_admin:
                 return active_admin
 
-        return db.scalar(
-            select(User)
-            .options(joinedload(User.role))
-            .where(User.email.like(f"{clean_identifier}@%"))
-            .order_by(User.id.asc())
-            .limit(1)
+        users = list(
+            db.scalars(
+                select(User)
+                .options(joinedload(User.role))
+                .order_by(User.id.asc())
+            ).all()
         )
+        for user in users:
+            local_part = user.email.split("@", 1)[0].lower()
+            if local_part == clean_identifier:
+                return user
+        return None
 
     @classmethod
     def authenticate_user(cls, db: Session, *, identifier: str, password: str) -> User:
@@ -1336,7 +1763,7 @@ class BootstrapService:
     def _ensure_demo_users(db: Session) -> None:
         roles_by_code = {role.code: role for role in db.scalars(select(Role)).all()}
         for item in DEMO_USERS:
-            user = db.scalar(select(User).where(User.email == item["email"]).limit(1))
+            user = _find_user_by_email(db, item["email"])
             if user:
                 if not user.password_hash:
                     user.password_hash = PasswordService.hash_password(item["password"])
@@ -1367,16 +1794,11 @@ class BootstrapService:
         if not email:
             return None
 
-        admin_role = db.scalar(select(Role).where(Role.code == "ADMIN").limit(1))
+        admin_role = _find_role_by_code(db, "ADMIN")
         if not admin_role:
             raise ValueError("No se pudo ubicar el rol ADMIN para inicializar el administrador")
 
-        user = db.scalar(
-            select(User)
-            .options(joinedload(User.role))
-            .where(User.email == email)
-            .limit(1)
-        )
+        user = _find_user_by_email(db, email, joined=True)
         if user:
             if not user.role or user.role.code != "ADMIN":
                 raise ValueError(
@@ -1419,8 +1841,7 @@ class BootstrapService:
 
     @staticmethod
     def seed(db: Session) -> None:
-        SchemaService.ensure_user_certificate_columns()
-        SchemaService.ensure_audit_log_columns()
+        SchemaService.prepare_runtime_schema()
         CertificateAuthorityService.ensure_ca(db)
         BootstrapService._upsert_roles_and_permissions(db)
         db.commit()
@@ -1453,6 +1874,10 @@ class BootstrapService:
         ExpirationService.expire_users(db)
         if settings.seed_demo_data:
             BeneficiarioService.seed_demo(db)
+
+    @staticmethod
+    def sync_managed_crypto_users(db: Session) -> None:
+        """Complete certificate issuance/refresh after the app is already serving traffic."""
 
         users = list(db.scalars(select(User).options(joinedload(User.role))).all())
         users.sort(key=lambda user: (0 if user.role.code == "ADMIN" else 1, user.id))
@@ -1502,11 +1927,8 @@ class BeneficiarioService:
 
     @staticmethod
     def list_by_area(db: Session, area: str) -> list[Beneficiario]:
-        return list(
-            db.scalars(
-                select(Beneficiario).where(Beneficiario.area == area).order_by(Beneficiario.fecha_ingreso.desc())
-            ).all()
-        )
+        items = list(db.scalars(select(Beneficiario).order_by(Beneficiario.fecha_ingreso.desc())).all())
+        return [item for item in items if item.area == area]
 
     @staticmethod
     def create(
@@ -1591,7 +2013,7 @@ class UserService:
         clean_name = full_name.strip()
         if not clean_name:
             raise ValueError("Debes indicar el nombre completo")
-        if db.scalar(select(User).where(User.email == clean_email)):
+        if _find_user_by_email(db, clean_email):
             raise ValueError("Ya existe un usuario con ese correo")
 
         role = db.get(Role, role_id)
@@ -1638,14 +2060,14 @@ class UserService:
 
     @staticmethod
     def list_certificate_history(db: Session) -> list[User]:
-        return list(
+        users = list(
             db.scalars(
                 select(User)
                 .options(joinedload(User.role))
                 .where(User.is_backup_admin.is_(False), User.certificate_serial.is_not(None))
-                .order_by(User.full_name.asc())
             ).all()
         )
+        return sorted(users, key=lambda user: user.full_name.lower())
 
     @staticmethod
     def get_actor(db: Session, actor_id: int | None = None) -> User | None:
@@ -1667,8 +2089,12 @@ class UserService:
 
     @staticmethod
     def list_roles(db: Session) -> list[Role]:
-        roles = list(db.scalars(select(Role).where(Role.code.in_(VISIBLE_ROLE_CODES))).all())
+        roles = [role for role in db.scalars(select(Role)).all() if role.code in VISIBLE_ROLE_CODES]
         return sorted(roles, key=_role_order)
+
+    @staticmethod
+    def get_role_by_code(db: Session, code: str) -> Role | None:
+        return _find_role_by_code(db, code)
 
     @staticmethod
     def update_status(db: Session, user: User, status: str, new_secret: str = "") -> User:

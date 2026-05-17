@@ -9,7 +9,6 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from sqlalchemy.orm import Session
-from sqlalchemy import select
 
 from app.config import settings
 from app.db import Base, engine
@@ -26,20 +25,21 @@ from app.services import (
     NotificationService,
     PasswordLoginService,
     SignatureLoginService,
+    SchemaService,
     UserService,
     role_requires_crypto,
 )
-from app.models import Role
 
 
 APP_DIR = Path(__file__).resolve().parent
-
-
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
-    with Session(bind=engine) as db:
-        BootstrapService.seed(db)
+    if settings.seed_demo_data:
+        with Session(bind=engine) as db:
+            BootstrapService.seed(db)
+    else:
+        SchemaService.prepare_runtime_schema()
     yield
 
 
@@ -2477,7 +2477,7 @@ def self_register(
     if len(password) < 6:
         return HTMLResponse(render_self_register_page("La contraseña debe tener al menos 6 caracteres."), status_code=400)
 
-    voluntario_role = db.scalar(select(Role).where(Role.code == "VOLUNTARIO"))
+    voluntario_role = UserService.get_role_by_code(db, "VOLUNTARIO")
     if not voluntario_role:
         return HTMLResponse(render_self_register_page("Error interno: rol no encontrado."), status_code=500)
 
