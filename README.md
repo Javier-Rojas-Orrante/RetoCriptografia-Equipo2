@@ -1,110 +1,152 @@
-# Gestor de Identidades Demo
+# Gestor de Identidades — Casa Monarca
 
-Demo minimalista en FastAPI para mostrar:
+Sistema web de gestión de identidades digitales desarrollado para Casa Monarca. Permite administrar usuarios con distintos niveles de acceso mediante criptografía de llave pública (PKI), certificados digitales X.509 y autenticación segura con PBKDF2.
 
-- login mixto: `.p12` para `ADMIN` y `COORDINADOR`, contrasena para `OPERATIVO` y `VOLUNTARIO`,
-- 4 roles visibles: `ADMIN`, `COORDINADOR`, `OPERATIVO`, `VOLUNTARIO`,
-- revocacion de emergencia que invalida el acceso de inmediato,
-- expiracion y reactivacion de cuentas,
-- respaldo espejo del administrador,
-- auditoria basica,
-- certificados X.509 donde el administrador usa un certificado autofirmado y firma los certificados de coordinadores,
-- material criptografico centralizado con administrador firmante en la base de datos compartida.
+## Características principales
 
-## Estado actual
+- Autenticación de dos factores para roles privilegiados (llave privada + contraseña).
+- Generación de pares de llaves RSA-2048 y certificados X.509 firmados por el administrador.
+- Cifrado de llaves privadas con AES-256 en formato PKCS#8.
+- Hashing de contraseñas con PBKDF2 (120,000 iteraciones, HMAC-SHA256).
+- Cookies de sesión firmadas con HMAC (httponly, samesite).
+- Cuatro roles con distintos niveles de privilegio: Administrador, Coordinador, Operativo y Voluntario.
+- Revocación y reactivación de cuentas con reemisión de material criptográfico.
+- Administrador espejo para recuperación de acceso.
+- Registro de auditoría inmutable (login, cambios de estado, emisión de certificados).
+- Exportación de reportes en PDF con hash SHA-256 de integridad.
+- Bloqueo automático tras 10 intentos fallidos de login.
+- Despliegue con Docker y soporte para Render.
 
-`ADMIN` y `COORDINADOR` volvieron a usar autenticacion criptografica con `.p12`.
-`OPERATIVO` y `VOLUNTARIO` siguen con acceso por usuario o correo y contrasena.
-El panel admin ahora muestra usuarios en filas compactas expandibles para ordenar la gestion.
-El material del administrador firmante y los paquetes `.p12` se almacenan de forma centralizada en la base de datos.
+## Requisitos
 
-## Como correrlo
+- Python 3.11 o superior
+- pip
+- (Opcional) Docker para despliegue con contenedor
+
+### Dependencias principales
+
+- FastAPI
+- SQLAlchemy 2.0+
+- cryptography
+- itsdangerous
+- uvicorn
+- fpdf2
+- python-multipart
+- pydantic-settings
+- psycopg (para PostgreSQL en producción)
+
+## Instalación
+
+1. Clonar el repositorio:
 
 ```bash
-pip install -e .
+git clone https://github.com/<tu-usuario>/RetoCriptografia-Equipo2.git
+cd RetoCriptografia-Equipo2
+```
+
+2. Crear un entorno virtual e instalar dependencias:
+
+```bash
+python -m venv venv
+source venv/bin/activate   # En Windows: venv\Scripts\activate
+pip install .
+```
+
+3. Copiar el archivo de variables de entorno y ajustar si es necesario:
+
+```bash
+cp .env.example .env
+```
+
+## Configuración
+
+El archivo `.env` contiene las variables de configuración. Las más relevantes son:
+
+| Variable | Descripción | Valor por defecto |
+|---|---|---|
+| `DATABASE_URL` | Cadena de conexión a la base de datos | `sqlite:///./identity_demo.db` |
+| `SESSION_SECRET` | Secreto para firmar cookies de sesión | `cambia-esto-en-desarrollo` |
+| `CERTS_DIR` | Directorio donde se guardan los certificados | `./generated/certs` |
+| `SEED_DEMO_DATA` | Cargar datos de demostración al iniciar | `true` |
+| `ENVIRONMENT` | `development` o `production` | `development` |
+
+En producción se recomienda usar PostgreSQL y generar un `SESSION_SECRET` aleatorio.
+
+## Uso básico
+
+Iniciar el servidor en modo desarrollo:
+
+```bash
 uvicorn app.main:app --reload
 ```
 
-Abre [http://127.0.0.1:8000](http://127.0.0.1:8000).
+Abrir el navegador en `http://127.0.0.1:8000`. En modo demo, se puede entrar como administrador con las credenciales `admin` / `admin`.
 
-## Credenciales demo
-
-Estas credenciales solo existen cuando `SEED_DEMO_DATA=true`.
-
-- `admin / admin`
-- `admin@demo.local + .p12 + admin`
-- `coordinador@demo.local + .p12 + demo1234`
-- `operativo / demo1234`
-- `voluntario / demo1234`
-- respaldo espejo admin: `admin.respaldo@demo.local + .p12 + respaldo1234`
-
-Tambien puedes entrar usando los correos completos:
-
-- `admin@demo.local`
-- `coordinador@demo.local`
-- `operativo@demo.local`
-- `voluntario@demo.local`
-
-## Rutas principales
-
-- `GET /`
-- `GET /login`
-- `POST /login`
-- `GET /portal?as_user=ID`
-- `GET /dashboard?as_user=ID`
-- `GET /admin/register?as_user=ID`
-- `GET /api/me?as_user=ID`
-- `GET /api/users?as_user=ID`
-- `GET /api/audit-logs?as_user=ID`
-
-## Documentacion
-
-- [Manual de usuario](/Users/javier/Documents/New%20project/docs/USO_Y_FUNCIONAMIENTO.md)
-- [Documentacion de codigo fuente](/Users/javier/Documents/New%20project/docs/DOCUMENTACION_FUNCIONAMIENTO.md)
-- [Revision criptografica](/Users/javier/Documents/New%20project/docs/REVISION_CRIPTOGRAFICA.md)
-- [Guia de integracion (SDK)](/Users/javier/Documents/New%20project/docs/GUIA_INTEGRACION_SDK.md)
-- [Investigacion de recuperacion admin](/Users/javier/Documents/New%20project/docs/INVESTIGACION_RECUPERACION_ADMIN.md)
-- [Cierre de demo de viernes](/Users/javier/Documents/New%20project/docs/CIERRE_DEMO_VIERNES.md)
-
-## Publicarlo para no correrlo local
-
-El repo ya queda preparado para desplegarse con Docker y con un `render.yaml` opcional.
-
-### Opcion recomendada: Render
-
-1. Sube este repo a GitHub.
-2. En Render, crea un Blueprint nuevo apuntando al repo.
-3. Revisa el plan del web service y de Postgres antes de confirmar la creacion.
-4. Durante el alta inicial define:
-   - `BOOTSTRAP_ADMIN_FULL_NAME`
-   - `BOOTSTRAP_ADMIN_EMAIL`
-   - `BOOTSTRAP_ADMIN_PASSWORD`
-5. En produccion la app arranca con:
-   - `SEED_DEMO_DATA=false`
-   - `SESSION_COOKIE_SECURE=true`
-   - `SESSION_SECRET` aleatorio
-   - `DATABASE_URL` tomado de Postgres administrado
-
-### Primer acceso en produccion
-
-- El administrador inicial puede entrar con correo + contrasena mientras todavia no tenga certificado emitido.
-- En cuanto entre, puede emitir su `private_key.pem` y `certificate.pem` desde el panel.
-- Los usuarios demo y el bypass `admin / admin` quedan desactivados cuando `SEED_DEMO_DATA=false`.
-
-### Docker generico
+Con Docker:
 
 ```bash
 docker build -t gestor-identidades .
-docker run --rm -p 8000:8000 \
-  -e ENVIRONMENT=production \
-  -e SESSION_SECRET=define-un-secreto-largo \
-  -e SESSION_COOKIE_SECURE=false \
-  -e SEED_DEMO_DATA=false \
-  -e BOOTSTRAP_ADMIN_FULL_NAME="Administrador General" \
-  -e BOOTSTRAP_ADMIN_EMAIL=admin@tu-dominio.com \
-  -e BOOTSTRAP_ADMIN_PASSWORD=define-una-clave-segura \
-  -e DATABASE_URL=sqlite:////app/data/identity_demo.db \
-  gestor-identidades
+docker run -p 8000:8000 gestor-identidades
 ```
 
-Si lo vas a publicar en internet, usa Postgres administrado en lugar de SQLite.
+## Estructura del proyecto
+
+```
+RetoCriptografia-Equipo2/
+├── app/
+│   ├── __init__.py
+│   ├── config.py          # Variables de configuración (pydantic-settings)
+│   ├── db.py              # Conexión y sesión de base de datos (SQLAlchemy)
+│   ├── deps.py            # Dependencias de FastAPI (sesión, auth)
+│   ├── main.py            # Rutas, vistas y lógica de la aplicación
+│   ├── models.py          # Modelos ORM (User, Role, AuditLog, etc.)
+│   ├── schemas.py         # Esquemas Pydantic de validación
+│   ├── services.py        # Lógica de negocio y criptografía
+│   └── static/            # Archivos estáticos (CSS, imágenes)
+├── docs/                  # Documentación del proyecto
+├── generated/
+│   └── certs/             # Certificados y llaves generados
+│       ├── ca/            # Certificado y llave de la CA (admin)
+│       └── users/         # Material criptográfico por usuario
+├── sql/
+│   └── schema.sql         # Esquema SQL de referencia
+├── .env.example           # Plantilla de variables de entorno
+├── Dockerfile             # Imagen Docker para despliegue
+├── pyproject.toml         # Metadatos y dependencias del proyecto
+└── render.yaml            # Configuración de despliegue en Render
+```
+
+## Contribuciones
+
+Si quieres colaborar con el proyecto:
+
+1. Haz un fork del repositorio y clónalo en tu máquina.
+2. Lee el archivo `COMO_FUNCIONA_EL_PROYECTO.md` para entender la arquitectura general.
+3. Revisa la carpeta `docs/` para consultar la documentación técnica y criptográfica.
+4. Crea una rama con un nombre descriptivo (`git checkout -b feature/mi-cambio`).
+5. Realiza tus cambios y asegúrate de que el servidor arranca sin errores.
+6. Haz commit y abre un Pull Request describiendo qué modificaste y por qué.
+
+Antes de modificar la lógica criptográfica, revisa `app/services.py` y la documentación en `docs/` para entender el flujo de llaves y certificados.
+
+## Pruebas básicas
+
+El proyecto no incluye un framework de pruebas automatizadas por el momento. Para verificar que todo funciona correctamente:
+
+1. Iniciar el servidor con `uvicorn app.main:app --reload`.
+2. Entrar como admin (`admin` / `admin` en modo demo).
+3. Crear un usuario con rol Coordinador, activarlo y descargar sus archivos.
+4. Cerrar sesión e iniciar sesión como el usuario creado subiendo su llave privada y certificado.
+5. Verificar que el portal muestra "Identidad verificada con archivos de acceso".
+6. Revocar al usuario desde el panel de admin y confirmar que ya no puede iniciar sesión.
+7. Revisar la sección de auditoría para confirmar que todos los eventos quedaron registrados.
+
+## Licencia
+
+Este proyecto se distribuye bajo la licencia MIT.
+
+## Contacto
+
+**Equipo 2**
+
+María Fernanda Montoya López — A01743214@tec.mx - Lider de equipo
