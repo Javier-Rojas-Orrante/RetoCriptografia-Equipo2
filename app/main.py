@@ -1109,6 +1109,7 @@ def _build_portal_sections(actor, section: str = "cuenta") -> list:
         sections.append((
             f"/portal?section=documentos&as_user={aid}", "Documentos", _DOC_ICON_SVG, None, section == "documentos",
         ))
+    if actor.status == "active":
         sections.append((
             "/verificar", "Verificar documento", _VERIFY_ICON_SVG, None, section == "verificar",
         ))
