@@ -940,6 +940,14 @@ def render_login_page(error: str | None = None, notice: str | None = None) -> st
           <button type="submit" style="font:inherit;font-size:13px;font-weight:600;padding:10px;border-radius:9px;border:1.5px solid #e5ddd3;cursor:pointer;background:#fff;color:#1a2332;">Solicitar recuperaci&oacute;n</button>
         </form>
       </details>
+
+      <div style="margin-top:16px;padding:14px 16px;background:rgba(224,96,32,0.06);border:1px solid rgba(224,96,32,0.15);border-radius:10px;text-align:center;">
+        <p style="font-size:13px;color:#6b7280;margin-bottom:6px;">&iquest;Recibiste un documento de Casa Monarca?</p>
+        <a href="/verificar" style="display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:600;color:#e06020;text-decoration:none;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          Verificar autenticidad &rarr;
+        </a>
+      </div>
     </div>
   </div>
 </body>
@@ -3194,11 +3202,7 @@ def _render_verification_page(
         <span>El sistema calcula el hash SHA-256 del archivo y lo compara con el hash registrado al momento de la firma digital. Si coincide, el documento no fue alterado.</span>
       </div>
       <form method="post" action="/verificar/archivo" enctype="multipart/form-data">
-        <label style="display:flex;flex-direction:column;gap:5px;font-size:14px;font-weight:500;">Folio del documento <span style="font-weight:400;color:#9ca3af;">(opcional)</span>
-          <input type="text" name="folio" placeholder="CM-2026-DOC-XXXXXXXX" style="text-transform:uppercase;font:inherit;font-size:15px;padding:11px 14px;border-radius:10px;border:1.5px solid #e5ddd3;background:#fff;color:#1a2332;outline:none;width:100%;">
-          <span style="font-size:11px;color:#9ca3af;">Si no tienes el folio, el sistema buscar&aacute; por el contenido del archivo.</span>
-        </label>
-        <label style="display:flex;flex-direction:column;gap:5px;font-size:14px;font-weight:500;margin-top:12px;">Archivo a verificar
+        <label style="display:flex;flex-direction:column;gap:5px;font-size:14px;font-weight:500;">Archivo a verificar
           <div class="file-zone">
             <div style="width:36px;height:36px;border-radius:8px;background:#fff3eb;border:1px solid #f0d4c5;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e06020" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
@@ -3210,7 +3214,7 @@ def _render_verification_page(
             <input type="file" name="verify_file" required id="vf" onchange="setVerFile(this)">
           </div>
         </label>
-        <button type="submit" style="font:inherit;font-size:14px;font-weight:600;padding:11px 22px;border-radius:10px;border:none;cursor:pointer;background:#4b5563;color:#fff;width:100%;margin-top:14px;">Verificar archivo</button>
+        <button type="submit" style="font:inherit;font-size:14px;font-weight:600;padding:11px 22px;border-radius:10px;border:none;cursor:pointer;background:#e06020;color:#fff;width:100%;margin-top:14px;">Verificar archivo</button>
       </form>
     </div>
 
