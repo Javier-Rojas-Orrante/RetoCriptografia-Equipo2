@@ -1,11 +1,13 @@
+﻿import asyncio
+import json
 from contextlib import asynccontextmanager
 from datetime import datetime
 from html import escape
 from pathlib import Path
 from urllib.parse import urlencode
 
-from fastapi import Cookie, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi import Cookie, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from sqlalchemy.orm import Session
@@ -49,6 +51,49 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
+
+# ── WebSocket connection manager for real-time notifications ──────────────
+class _WSManager:
+    def __init__(self):
+        self._connections: dict[int, list[WebSocket]] = {}
+
+    async def connect(self, user_id: int, ws: WebSocket):
+        await ws.accept()
+        self._connections.setdefault(user_id, []).append(ws)
+
+    def disconnect(self, user_id: int, ws: WebSocket):
+        conns = self._connections.get(user_id, [])
+        if ws in conns:
+            conns.remove(ws)
+
+    async def send_to_user(self, user_id: int, data: dict):
+        for ws in self._connections.get(user_id, []):
+            try:
+                await ws.send_json(data)
+            except Exception:
+                pass
+
+    async def send_to_admins(self, db: Session, data: dict):
+        from app.models import User, Role
+        from sqlalchemy import select
+        admins = db.scalars(select(User).join(Role).where(Role.code == "ADMIN", User.status_lookup.is_not(None))).all()
+        for admin in admins:
+            await self.send_to_user(admin.id, data)
+
+_ws_manager = _WSManager()
+
+
+def _fire_ws(coro):
+    """Schedule a coroutine from sync or async context."""
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(coro)
+    except RuntimeError:
+        try:
+            loop = asyncio.get_event_loop()
+            asyncio.run_coroutine_threadsafe(coro, loop)
+        except Exception:
+            pass
 
 # ── Session cookie (signed with HMAC, 8-hour expiry) ──────────────────────
 _SESSION_COOKIE = "cm_session"
@@ -274,7 +319,16 @@ WARN_NOTICES = {"private-key-already-delivered"}
 def render_notice(notice: str | None) -> str:
     if not notice:
         return ""
-    message = NOTICE_MESSAGES.get(notice, notice)
+    message = NOTICE_MESSAGES.get(notice)
+    if not message and notice.startswith("batch-signed-"):
+        parts = notice.replace("batch-signed-", "").split("-errors-")
+        count = parts[0]
+        if len(parts) > 1:
+            message = f"Se firmaron {count} documentos en lote. {parts[1]} archivo(s) tuvieron errores."
+        else:
+            message = f"Se firmaron {count} documentos en lote exitosamente."
+    if not message:
+        message = notice
     css_class = "warn" if notice in WARN_NOTICES else "ok"
     return f"<div class='{css_class}'>{escape(message)}</div>"
 
@@ -725,6 +779,25 @@ def base_page(title: str, body: str, actor=None, portal_sections: list | None = 
         <div class="page-wrapper">
           <main>{body}</main>
         </div>
+        <div id="ws-toast" style="position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none;"></div>
+        <script>
+        (function(){{
+          var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+          var ws = new WebSocket(proto + '//' + location.host + '/ws/notifications');
+          ws.onmessage = function(e){{
+            var d = JSON.parse(e.data);
+            var toast = document.createElement('div');
+            toast.style.cssText = 'pointer-events:auto;background:#1a2332;color:#fff;padding:14px 18px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);max-width:380px;font-size:13px;line-height:1.5;animation:slideIn .3s ease;border-left:4px solid ' + (d.level === 'danger' ? '#dc2626' : d.level === 'warning' ? '#f59e0b' : '#22c55e');
+            toast.innerHTML = '<strong>' + (d.title||'Notificaci\\u00f3n') + '</strong><br>' + (d.message||'');
+            document.getElementById('ws-toast').appendChild(toast);
+            setTimeout(function(){{ toast.style.opacity='0'; toast.style.transition='opacity .3s'; setTimeout(function(){{ toast.remove(); }}, 300); }}, 6000);
+            var badge = document.querySelector('.ws-notif-badge');
+            if(badge){{ var c = parseInt(badge.textContent||'0')+1; badge.textContent = c; badge.style.display='inline'; }}
+          }};
+          ws.onclose = function(){{ setTimeout(arguments.callee, 5000); }};
+        }})();
+        </script>
+        <style>@keyframes slideIn{{ from{{ transform:translateX(100%);opacity:0; }} to{{ transform:translateX(0);opacity:1; }} }}</style>
       </body>
     </html>
     """
@@ -1486,6 +1559,42 @@ def render_portal_page(
     _STATUS_LABELS = {"active": "Activo", "pending": "Pendiente", "revoked": "Revocado", "expired": "Expirado"}
     _STATUS_CSS = {"active": "active", "pending": "pending", "revoked": "revoked", "expired": "expired"}
 
+    # ── Certificate health indicator ──
+    _cert_health_html = ""
+    if role_requires_crypto(actor) and actor.certificate_not_after:
+        from datetime import datetime, timezone
+        _now = datetime.now(timezone.utc)
+        _cert_exp = actor.certificate_not_after
+        if _cert_exp.tzinfo is None:
+            _cert_exp = _cert_exp.replace(tzinfo=timezone.utc)
+        _days_left = (_cert_exp - _now).days
+        if _days_left < 0:
+            _health_color = "#dc2626"; _health_bg = "#fee2e2"; _health_border = "#fca5a5"
+            _health_label = "Expirado"; _health_icon = "&#10007;"
+            _health_msg = f"Tu certificado expiró hace {abs(_days_left)} día{'s' if abs(_days_left) != 1 else ''}."
+        elif _days_left <= 7:
+            _health_color = "#dc2626"; _health_bg = "#fee2e2"; _health_border = "#fca5a5"
+            _health_label = "Crítico"; _health_icon = "&#9888;"
+            _health_msg = f"Tu certificado expira en {_days_left} día{'s' if _days_left != 1 else ''}. Solicita renovación urgente."
+        elif _days_left <= 30:
+            _health_color = "#92400e"; _health_bg = "#fef3c7"; _health_border = "#fcd34d"
+            _health_label = "Próximo a expirar"; _health_icon = "&#9888;"
+            _health_msg = f"Tu certificado expira en {_days_left} días. Considera renovarlo pronto."
+        else:
+            _health_color = "#166534"; _health_bg = "#dcfce7"; _health_border = "#86efac"
+            _health_label = "Saludable"; _health_icon = "&#10003;"
+            _health_msg = f"Tu certificado es válido por {_days_left} días más."
+
+        _cert_health_html = f"""
+    <div style="background:{_health_bg};border:1px solid {_health_border};border-radius:12px;padding:16px 20px;margin-bottom:16px;display:flex;align-items:center;gap:14px;">
+      <div style="width:42px;height:42px;border-radius:50%;background:{_health_border};display:flex;align-items:center;justify-content:center;font-size:20px;color:{_health_color};flex-shrink:0;">{_health_icon}</div>
+      <div>
+        <p style="font-weight:700;font-size:14px;color:{_health_color};">Salud del certificado: {_health_label}</p>
+        <p style="font-size:13px;color:{_health_color};opacity:.85;">{_health_msg}</p>
+        <p style="font-size:11px;color:{_health_color};opacity:.7;margin-top:2px;">Expira: {_cert_exp.strftime('%d/%m/%Y %H:%M')} UTC</p>
+      </div>
+    </div>"""
+
     # --- Section: Mi cuenta ---
     _cuenta_content = f"""
     <section style="margin-bottom:24px;">
@@ -1493,6 +1602,7 @@ def render_portal_page(
       <div class="page-title-accent"></div>
       <p class="muted" style="font-size:14px;margin-top:2px;">Bienvenido/a, <strong style="color:var(--text);">{escape(actor.full_name)}</strong></p>
       {verified_html}{render_notice(notice)}
+      {_cert_health_html}
     </section>
     <div class="card" style="padding:28px;margin-bottom:16px;">
       <h2 style="margin-bottom:16px;">Informaci&oacute;n personal</h2>
@@ -1603,7 +1713,7 @@ def render_portal_page(
         for d in doc_list:
             st_css = _DOC_STATUS_CSS.get(d.status, "pending")
             st_label = DOC_STATUS_LABELS.get(d.status, d.status)
-            doc_rows += f"""<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#fff;border-bottom:1px solid #e5ddd3;flex-wrap:wrap;">
+            doc_rows += f"""<div class="doc-row" data-type="{escape(d.document_type)}" data-status="{escape(d.status)}" style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#fff;border-bottom:1px solid #e5ddd3;flex-wrap:wrap;">
               <div style="flex:1;min-width:180px;">
                 <p style="font-weight:600;font-size:13px;color:#1a2332;">{escape(d.title)}</p>
                 <p style="font-size:12px;color:#6b7280;">
@@ -1687,10 +1797,61 @@ def render_portal_page(
       </form>
     </div>
 
+    <div class="card" style="padding:28px;margin-bottom:16px;">
+      <h2 style="margin-bottom:6px;">Firma masiva (Batch Signing)</h2>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:18px;">Selecciona m&uacute;ltiples documentos para firmarlos todos con un solo clic. Ideal para constancias de atenci&oacute;n del d&iacute;a.</p>
+      <form method="post" action="/ui/documents/batch-sign" enctype="multipart/form-data">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+          <label style="display:flex;flex-direction:column;gap:4px;">Tipo de documento (aplica a todos)
+            <select name="document_type" required>
+              <option value="">-- Selecciona --</option>
+              {doc_type_options}
+            </select>
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;">Vigencia (d&iacute;as, opcional)
+            <input name="expires_days" type="number" min="1" max="3650" placeholder="Sin vencimiento">
+          </label>
+        </div>
+        <label style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px;">Archivos a firmar
+          <span style="font-size:11px;color:#9ca3af;">Selecciona hasta 20 archivos &mdash; PDF, DOC, DOCX, TXT, ODT</span>
+          <div class="file-zone" style="margin-top:4px;" id="batch-zone">
+            <div class="file-zone-icon" style="width:36px;height:36px;border-radius:8px;background:#fff3eb;border:1px solid #f0d4c5;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e06020" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+            </div>
+            <div>
+              <div class="file-zone-text" id="batchf-text">Arrastra tus documentos aqu&iacute;</div>
+              <div class="file-zone-sub" id="batchf-sub">o selecciona m&uacute;ltiples archivos</div>
+            </div>
+            <input type="file" name="document_files" accept=".pdf,.doc,.docx,.txt,.odt" id="batchf" required multiple onchange="setBatchFiles(this)">
+          </div>
+        </label>
+        <button type="submit" style="background:var(--accent);color:#fff;padding:10px 22px;border-radius:8px;font-size:14px;font-weight:600;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:8px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Firmar todos
+        </button>
+      </form>
+    </div>
+
     <div class="card" style="padding:24px;">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
         <h2>Documentos firmados</h2>
-        <span style="background:#e0f2fe;color:#075985;border:1px solid #7dd3fc;border-radius:999px;padding:2px 12px;font-size:11px;font-weight:600;">{len(doc_list)} documento{'s' if len(doc_list) != 1 else ''}</span>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <span style="background:#e0f2fe;color:#075985;border:1px solid #7dd3fc;border-radius:999px;padding:2px 12px;font-size:11px;font-weight:600;">{len(doc_list)} documento{'s' if len(doc_list) != 1 else ''}</span>
+          <a href="/ui/documents/export-csv" style="font-size:11px;font-weight:600;color:var(--accent);text-decoration:none;border:1px solid var(--accent);padding:3px 10px;border-radius:7px;">Exportar CSV</a>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+        <input type="text" id="doc-search" placeholder="Buscar por folio, t&iacute;tulo o firmante..." oninput="filterDocs()" style="flex:1;min-width:180px;font-size:13px;padding:7px 12px;">
+        <select id="doc-filter-type" onchange="filterDocs()" style="font-size:13px;padding:7px 10px;min-width:140px;">
+          <option value="">Todos los tipos</option>
+          {doc_type_options}
+        </select>
+        <select id="doc-filter-status" onchange="filterDocs()" style="font-size:13px;padding:7px 10px;min-width:140px;">
+          <option value="">Todos los estados</option>
+          <option value="signed">Firmado</option>
+          <option value="revoked">Revocado</option>
+          <option value="expired">Expirado</option>
+        </select>
       </div>
       <div style="border:1px solid #e5ddd3;border-radius:10px;overflow:hidden;">
         {doc_rows or '<p style="padding:16px;font-size:13px;color:#6b7280;">No hay documentos firmados a&uacute;n.</p>'}
@@ -1740,6 +1901,34 @@ def render_portal_page(
         if (!cl.parentElement.contains(e.target)) cl.classList.remove('open');
       }});
     }});
+    /* ── Batch file handler ── */
+    function setBatchFiles(input) {{
+      var zone = input.closest('.file-zone');
+      var textEl = document.getElementById('batchf-text');
+      var subEl = document.getElementById('batchf-sub');
+      if (input.files && input.files.length > 0) {{
+        textEl.textContent = input.files.length + ' archivo' + (input.files.length > 1 ? 's' : '') + ' seleccionado' + (input.files.length > 1 ? 's' : '');
+        var total = 0; for(var i=0;i<input.files.length;i++) total += input.files[i].size;
+        subEl.textContent = (total/1024).toFixed(1) + ' KB total \\u2714';
+        zone.classList.add('has-file');
+      }} else {{
+        textEl.innerHTML = 'Arrastra tus documentos aqu\\u00ed';
+        subEl.textContent = 'o selecciona m\\u00faltiples archivos';
+        zone.classList.remove('has-file');
+      }}
+    }}
+    /* ── Smart search & filter ── */
+    function filterDocs() {{
+      var q = (document.getElementById('doc-search').value || '').toLowerCase();
+      var ft = document.getElementById('doc-filter-type').value;
+      var fs = document.getElementById('doc-filter-status').value;
+      document.querySelectorAll('.doc-row').forEach(function(row) {{
+        var matchQ = !q || row.textContent.toLowerCase().indexOf(q) !== -1;
+        var matchT = !ft || row.getAttribute('data-type') === ft;
+        var matchS = !fs || row.getAttribute('data-status') === fs;
+        row.style.display = (matchQ && matchT && matchS) ? '' : 'none';
+      }});
+    }}
     </script>
     """
 
@@ -3036,11 +3225,135 @@ async def ui_sign_document(
         user_agent=ua,
     )
 
+    # Real-time notification to admins
+    NotificationService.create(
+        db, type="document_signed",
+        title=f"Documento firmado: {doc.title}",
+        message=f"{actor.full_name} firmó '{doc.title}' ({DOC_TYPE_LABELS.get(doc.document_type, doc.document_type)}). Folio: {doc.folio}",
+        metadata={"folio": doc.folio, "signer": actor.full_name},
+    )
+    _fire_ws(_ws_manager.send_to_admins(db, {
+        "type": "document_signed", "level": "success",
+        "title": "Documento firmado",
+        "message": f"{actor.full_name} firmó: {doc.title} (Folio: {doc.folio})",
+    }))
+
     resp = RedirectResponse(
         url=f"/portal?section=documentos&{urlencode({'notice': 'document-signed'})}",
         status_code=303,
     )
     return _login_redirect(resp, actor.id)
+
+
+@app.post("/ui/documents/batch-sign")
+async def ui_batch_sign(
+    request: Request,
+    document_type: str = Form(...),
+    expires_days: str = Form(default=""),
+    document_files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    actor=Depends(_get_session_actor),
+):
+    if not AuthorizationService.authorize(db, actor, "documents", "sign"):
+        raise HTTPException(status_code=403, detail="No tienes permiso para firmar documentos")
+
+    exp_days = None
+    if expires_days.strip():
+        try:
+            exp_days = int(expires_days.strip())
+        except ValueError:
+            pass
+
+    ip = request.client.host if request.client else "desconocida"
+    ua = request.headers.get("user-agent", "desconocido")[:255]
+    signed_count = 0
+    errors = []
+
+    for uf in document_files[:20]:  # limit to 20
+        file_bytes = await uf.read()
+        title = uf.filename or f"Documento {signed_count + 1}"
+        try:
+            doc = DocumentService.sign_document(
+                db,
+                file_bytes=file_bytes,
+                title=title,
+                document_type=document_type,
+                signer=actor,
+                original_filename=uf.filename,
+                expires_days=exp_days,
+            )
+            AuditService.log(
+                db,
+                event_type="document_signed",
+                actor_user_id=actor.id,
+                action="batch_sign_document",
+                resource="documents",
+                result="success",
+                metadata={"folio": doc.folio, "title": doc.title, "batch": True},
+                ip_address=ip,
+                user_agent=ua,
+            )
+            signed_count += 1
+        except (ValueError, Exception) as exc:
+            errors.append(f"{uf.filename}: {exc}")
+
+    if signed_count > 0:
+        NotificationService.create(
+            db, type="batch_signed",
+            title=f"Firma masiva: {signed_count} documentos",
+            message=f"{actor.full_name} firmó {signed_count} documentos en lote.",
+            metadata={"count": signed_count, "signer": actor.full_name},
+        )
+        _fire_ws(_ws_manager.send_to_admins(db, {
+            "type": "batch_signed", "level": "success",
+            "title": "Firma masiva completada",
+            "message": f"{actor.full_name} firmó {signed_count} documentos en lote.",
+        }))
+
+    notice_msg = f"batch-signed-{signed_count}"
+    if errors:
+        notice_msg += f"-errors-{len(errors)}"
+
+    resp = RedirectResponse(
+        url=f"/portal?section=documentos&{urlencode({'notice': notice_msg})}",
+        status_code=303,
+    )
+    return _login_redirect(resp, actor.id)
+
+
+@app.get("/ui/documents/export-csv")
+def ui_export_csv(
+    db: Session = Depends(get_db),
+    actor=Depends(_get_session_actor),
+):
+    if not AuthorizationService.authorize(db, actor, "documents", "sign"):
+        raise HTTPException(status_code=403, detail="Sin permiso")
+
+    from app.models import Document as DocModel
+    docs = db.query(DocModel).order_by(DocModel.issued_at.desc()).all()
+
+    import io, csv
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Folio", "Título", "Tipo", "Estado", "Firmante", "Fecha", "Vencimiento", "Archivo original", "Tamaño (bytes)"])
+    for d in docs:
+        writer.writerow([
+            d.folio, d.title,
+            DOC_TYPE_LABELS.get(d.document_type, d.document_type),
+            DOC_STATUS_LABELS.get(d.status, d.status),
+            d.signer.full_name if d.signer else "?",
+            d.issued_at.strftime("%Y-%m-%d %H:%M") if d.issued_at else "",
+            d.expires_at.strftime("%Y-%m-%d") if d.expires_at else "Sin vencimiento",
+            d.original_filename or "",
+            d.file_size or "",
+        ])
+
+    csv_bytes = output.getvalue().encode("utf-8-sig")
+    return StreamingResponse(
+        iter([csv_bytes]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=documentos_casa_monarca.csv"},
+    )
 
 
 @app.post("/ui/documents/{folio}/revoke")
@@ -3131,9 +3444,7 @@ def _render_verification_page(
             st_label = DOC_STATUS_LABELS.get(doc.status, doc.status)
             signer_name = escape(doc.signer.full_name) if doc.signer else "Desconocido"
             signer_role = escape(doc.signer.role.name) if doc.signer and doc.signer.role else ""
-            result_html += f"""
-        <div style="background:#fff;border:1px solid #e5ddd3;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
-          <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:12px;">Datos del documento</p>
+            details_block = f"""
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;">
             <div>
               <p style="font-size:11px;font-weight:600;color:#6b7280;">Folio</p>
@@ -3168,8 +3479,41 @@ def _render_verification_page(
               <p style="font-size:11px;font-weight:600;color:#6b7280;">Algoritmo de firma</p>
               <p style="font-size:14px;">RSA-PSS-SHA256</p>
             </div>
+          </div>"""
+            # Blind verification: hide details behind privacy gate (signer initials challenge)
+            signer_initials = ""
+            if doc.signer and doc.signer.full_name:
+                parts = doc.signer.full_name.strip().split()
+                signer_initials = "".join(p[0].upper() for p in parts if p)
+            result_html += f"""
+        <div style="background:#fff;border:1px solid #e5ddd3;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+          <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:12px;">Datos del documento</p>
+          <div id="blind-gate" style="text-align:center;padding:18px;">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#e06020" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <p style="font-weight:600;font-size:14px;margin:10px 0 4px;color:#1a2332;">Verificaci&oacute;n de identidad (Privacy-first)</p>
+            <p style="font-size:12px;color:#6b7280;margin-bottom:14px;">Para proteger la privacidad del beneficiario, ingresa las iniciales del firmante que aparecen en tu documento.</p>
+            <div style="display:flex;gap:8px;justify-content:center;align-items:center;">
+              <input type="text" id="blind-input" placeholder="Ej: CMR" maxlength="10" style="width:100px;text-align:center;text-transform:uppercase;font-size:16px;font-weight:600;padding:8px;border-radius:8px;border:1.5px solid #e5ddd3;">
+              <button onclick="checkBlind()" style="background:#e06020;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px;">Desbloquear</button>
+            </div>
+            <p id="blind-error" style="color:#dc2626;font-size:12px;margin-top:8px;display:none;">Iniciales incorrectas. Int&eacute;ntalo de nuevo.</p>
           </div>
-        </div>"""
+          <div id="blind-details" style="display:none;">
+            {details_block}
+          </div>
+        </div>
+        <script>
+        function checkBlind() {{{{
+          var inp = document.getElementById('blind-input').value.trim().toUpperCase();
+          var expected = '{signer_initials}';
+          if (inp === expected) {{{{
+            document.getElementById('blind-gate').style.display = 'none';
+            document.getElementById('blind-details').style.display = 'block';
+          }}}} else {{{{
+            document.getElementById('blind-error').style.display = 'block';
+          }}}}
+        }}}}
+        </script>"""
 
     error_html = f'<div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:14px;">{escape(error)}</div>' if error else ""
 
@@ -3352,6 +3696,21 @@ def public_verify_by_folio_post(
     )
 
     actor = _try_get_session_actor(request, db)
+
+    # Alert admins on suspicious verification results
+    if result in ("tampered", "invalid_signature"):
+        NotificationService.create(
+            db, type="verification_alert",
+            title=f"Alerta: Verificación fallida ({result})",
+            message=f"Intento de validación con documento alterado. Folio: {folio}. IP: {ip}",
+            metadata={"folio": folio, "result": result, "ip": ip},
+        )
+        _fire_ws(_ws_manager.send_to_admins(db, {
+            "type": "verification_alert", "level": "danger",
+            "title": "\u26a0 Alerta de seguridad",
+            "message": f"Intento de validación fallido ({result}) desde IP {ip}. Folio: {folio}",
+        }))
+
     return HTMLResponse(_render_verification_page(result=result, doc=doc, folio=folio, actor=actor))
 
 
@@ -3390,6 +3749,20 @@ async def public_verify_by_file(
         user_agent=ua,
     )
 
+    # Alert admins on suspicious file verification results
+    if result in ("tampered", "invalid_signature"):
+        NotificationService.create(
+            db, type="verification_alert",
+            title=f"Alerta: Archivo alterado ({result})",
+            message=f"Se cargó un archivo que no coincide con el documento original. Folio: {folio or 'sin folio'}. IP: {ip}",
+            metadata={"folio": folio, "result": result, "ip": ip},
+        )
+        _fire_ws(_ws_manager.send_to_admins(db, {
+            "type": "verification_alert", "level": "danger",
+            "title": "\u26a0 Alerta: Documento alterado",
+            "message": f"Archivo no coincide con el original. Folio: {folio or 'sin folio'}. IP: {ip}",
+        }))
+
     return HTMLResponse(_render_verification_page(result=result, doc=doc, folio=folio, actor=actor))
 
 
@@ -3403,6 +3776,22 @@ def logout():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.websocket("/ws/notifications")
+async def ws_notifications(ws: WebSocket, db: Session = Depends(get_db)):
+    token = ws.cookies.get(_SESSION_COOKIE)
+    payload = _read_session_cookie(token)
+    if not payload:
+        await ws.close(code=1008)
+        return
+    user_id = payload["uid"]
+    await _ws_manager.connect(user_id, ws)
+    try:
+        while True:
+            await ws.receive_text()
+    except WebSocketDisconnect:
+        _ws_manager.disconnect(user_id, ws)
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
@@ -3940,3 +4329,4 @@ def ui_mark_notification_read(
     NotificationService.mark_read(db, notification_id)
     back_href = f"/dashboard?section=notificaciones&as_user={actor.id}"
     return RedirectResponse(url=back_href, status_code=303)
+
