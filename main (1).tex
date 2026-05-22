@@ -1,0 +1,686 @@
+\documentclass[10pt]{article} [cite: 1]
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+
+\usepackage[
+ top=20mm,
+ bottom=20mm,
+ left=25mm,
+ right=25mm,
+ letterpaper
+]{geometry}
+
+\usepackage{setspace}
+\setstretch{1.15}
+\setlength{\parskip}{5pt}
+\setlength{\parindent}{0pt}
+
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{listings}
+\usepackage{tcolorbox}
+
+\definecolor{itesmblue}{RGB}{0,47,108}
+\definecolor{accentorange}{RGB}{224,96,32}
+\definecolor{graytext}{RGB}{107,114,128}
+\definecolor{codebg}{RGB}{248,247,244}
+
+\hypersetup{
+ colorlinks=true,
+ linkcolor=itesmblue,
+ urlcolor=accentorange,
+ citecolor=itesmblue,
+ pdfauthor={Equipo 2},
+ pdftitle={Diseño de Sistema de Gestión y Verificación de Documentos},
+}
+
+\lstset{
+ backgroundcolor=\color{codebg},
+ basicstyle=\ttfamily\small,
+ breaklines=true,
+ frame=single,
+ rulecolor=\color{graytext},
+ captionpos=b,
+ tabsize=2,
+ showstringspaces=false,
+}
+
+\newtcolorbox{infobox}[1][]{
+ colback=blue!5,
+ colframe=itesmblue,
+ fonttitle=\bfseries,
+ title={#1},
+ rounded corners,
+ boxrule=0.5pt,
+}
+
+\newtcolorbox{warningbox}[1][]{
+ colback=orange!5,
+ colframe=accentorange,
+ fonttitle=\bfseries,
+ title={#1},
+ rounded corners,
+ boxrule=0.5pt,
+}
+
+\newtcolorbox{successbox}[1][]{
+ colback=green!5,
+ colframe=green!50!black,
+ fonttitle=\bfseries,
+ title={#1},
+ rounded corners,
+ boxrule=0.5pt,
+}
+
+\pagestyle{plain}
+
+\titleformat{\section}
+ {\normalfont\Large\bfseries}
+ {\thesection.}{0.5em}{}
+
+\titleformat{\subsection}
+ {\normalfont\large\bfseries}
+ {\thesubsection}{0.5em}{}
+
+\titleformat{\subsubsection}
+ {\normalfont\normalsize\bfseries}
+ {\thesubsubsection}{0.5em}{}
+
+\titlespacing*{\section}{0pt}{1.2em}{0.6em}
+\titlespacing*{\subsection}{0pt}{1em}{0.4em}
+\titlespacing*{\subsubsection}{0pt}{0.8em}{0.3em}
+
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    \vspace*{4em}
+    \includegraphics[width=0.5\textwidth]{tecnologico-de-monterrey-blue.png}\\[4em]
+    
+    {\large\bfseries Instituto Tecnológico y de Estudios Superiores de Monterrey} \\
+    {\large\bfseries Campus Monterrey} \\[0.5cm]
+    Escuela de Ingeniería y Ciencias \\
+ 
+    \vspace{2cm} [cite: 2]
+    Ingeniería en Ciencias de Datos y Matemáticas \\[0.3cm]
+    {\bfseries Uso de álgebras modernas para seguridad y criptografía, MA2006B.604} \\
+    \vspace{0.5cm}
+    {\Large\bfseries Proyecto: Firmas Solidarias – Tecnología Criptográfica para los Derechos Humanos} \\
+    \vspace{0.3cm}
+    {\large\bfseries Etapa 2: Autenticidad e Integridad Documental} \\
+    \vspace{2cm}
+    
+    {\bfseries Equipo 2:} \\[0.5cm]
+    \begin{tabular}{cc}
+        Ana Lidia Hernández Díaz & A00838643 \\
+        Ana Paula García Valverde & A01174572 \\ [cite: 3]
+        María Fernanda Montoya López & A01743214 \\
+        Javier Rojas Orrante & A01352213 \\
+        Xavier Lago Hicks & A01403177 \\
+    \end{tabular}
+    
+    \vspace{1cm}
+    {\bfseries Profesores:} \\
+    Raúl Gómez \quad Anas Wajid \quad Alberto F. Martínez \\
+    \vspace{1cm}
+    
+    \textit{Socio Formador: Casa Monarca} \\ [cite: 4]
+    \vspace{1cm}
+    {\bfseries Monterrey, Nuevo León. Mayo de 2026} [cite: 5]
+\end{titlepage}
+
+\tableofcontents
+\newpage
+% =======================================================================
+% PARTE 2: VERIFICACIÓN EXTERNA DE DOCUMENTOS (Contenido de main.tex)
+% =======================================================================
+\part{Etapa 2: Diseño de Sistema de Verificación Externa de Documentos}
+
+\begin{abstract}
+    En el presente reporte se detalla el desarrollo de la etapa 2, la cual consiste en la integración de un sistema de verificación de documentos emitidos por los colaboradores de Casa Monarca. [cite: 6]
+\end{abstract}
+
+\section{Introducción}
+
+La segunda etapa del proyecto para Casa Monarca propone el diseño de un sistema de verificación externa de documentos emitidos por la organización socioformadora. [cite: 7] Esta etapa surge como continuación natural del gestor de identidades desarrollado anteriormente, donde se estableció una base de usuarios, roles, certificados digitales, llaves criptográficas y mecanismos de auditoría. [cite: 8] El objetivo principal de esta nueva propuesta es proteger la integridad y autenticidad de documentos oficiales emitidos por la OSF. [cite: 9] En este contexto, se busca impedir que documentos sensibles puedan ser modificados, falsificados o presentados como oficiales sin haber sido realmente emitidos por personal autorizado de Casa Monarca. [cite: 10] La solución se basa en criptografía de clave pública, firmas digitales, códigos QR de verificación, almacenamiento seguro de metadatos y un portal público donde cualquier persona externa pueda comprobar si un documento fue emitido por la organización y si su contenido sigue siendo el mismo desde el momento de su firma. [cite: 11]
+
+\subsection{Descripción de la problemática}
+
+Casa Monarca trabaja con personas migrantes y población en situación vulnerable, por lo que puede emitir documentos relevantes para procesos de apoyo, constancias, reportes, cartas institucionales o evidencias administrativas. [cite: 12] Estos documentos pueden ser compartidos con terceros, como instituciones, aliados, dependencias, donantes u otras organizaciones. [cite: 13] El problema aparece cuando un documento sale del entorno interno de la organización. [cite: 14] Una vez enviado por correo, impreso o descargado, existe el riesgo de que sea alterado o falsificado. [cite: 15] Por ejemplo, una persona podría modificar fechas, nombres, folios, datos personales o incluso crear un documento falso utilizando el logotipo institucional. [cite: 16] Por ello, se necesita un mecanismo que permita responder tres preguntas importantes:
+
+\begin{itemize}
+    \item ¿Este documento realmente fue emitido por Casa Monarca? [cite: 17]
+    \item ¿El documento fue firmado por una persona autorizada?
+    \item ¿El contenido del documento sigue siendo el mismo o fue alterado? [cite: 18]
+\end{itemize}
+
+La solución propuesta busca resolver estas preguntas mediante un sistema de firma digital y verificación externa accesible, seguro y fácil de usar. [cite: 19]
+
+\section{Marco teórico}
+
+\subsection{Criptografía de clave pública}
+
+La criptografía de clave pública, también llamada criptografía asimétrica, utiliza un par de llaves relacionadas matemáticamente: una llave privada y una llave pública. [cite: 20] La llave privada debe mantenerse protegida por su dueño, mientras que la llave pública puede compartirse con otras personas para verificar operaciones criptográficas. [cite: 21] En este proyecto, la llave privada se utiliza para firmar documentos y la llave pública para verificar que la firma sea válida. [cite: 22] Esto permite comprobar que el documento fue firmado por una persona autorizada sin necesidad de revelar su llave privada. [cite: 23]
+
+\subsection{Firma digital}
+
+Una firma digital es un mecanismo criptográfico que permite asociar un documento con una identidad digital. [cite: 24] A diferencia de una firma escaneada o una imagen pegada en un PDF, la firma digital depende matemáticamente del contenido del documento. [cite: 25] Esto significa que si el archivo cambia aunque sea mínimamente, la firma deja de ser válida. [cite: 26] Por esta razón, la firma digital permite garantizar integridad, autenticidad y no repudio. [cite: 27]
+
+\begin{infobox}[Propósito de la firma digital]
+La firma digital no busca ocultar el contenido del documento, sino comprobar quién lo firmó y si el contenido se mantiene intacto. [cite: 28]
+\end{infobox}
+
+\subsection{Hash criptográfico}
+
+Un hash criptográfico es una función que recibe un archivo o mensaje y produce una cadena única de longitud fija. [cite: 29] En este sistema se propone utilizar SHA-256 para generar una huella digital del documento. [cite: 30] Si el documento cambia, el hash resultante también cambia. Por eso, el hash funciona como una huella única del archivo. [cite: 31] En lugar de firmar directamente todo el documento, el sistema firma el hash, lo cual es más eficiente y seguro. [cite: 32]
+
+\subsection{Certificados digitales X.509}
+
+Un certificado digital X.509 permite vincular una llave pública con una identidad. [cite: 33] En este caso, el certificado puede contener información como el nombre del colaborador autorizado, su correo, su rol y la organización a la que pertenece. [cite: 34] Dentro del sistema, los certificados permiten verificar que la firma corresponde a una persona registrada y autorizada por Casa Monarca. [cite: 35] Esto se conecta con la etapa anterior del proyecto, donde ya se contempla la generación y administración de certificados para usuarios privilegiados. [cite: 36]
+
+\subsection{Integridad, autenticidad y no repudio}
+
+La integridad asegura que el contenido de un documento no ha sido alterado. [cite: 37] La autenticidad confirma que el documento proviene de una fuente legítima. [cite: 38] El no repudio impide que una persona autorizada niegue posteriormente haber firmado un documento, siempre que su llave privada haya sido custodiada correctamente. [cite: 39] Estos tres principios son la base de la propuesta, ya que el sistema no solo revisa el archivo, sino también quién lo firmó, cuándo se firmó y si la firma sigue siendo válida. [cite: 40]
+
+\section{Objetivo de la solución}
+
+Diseñar un sistema de verificación externa de documentos que permita a Casa Monarca firmar digitalmente archivos emitidos por la organización y ofrecer a terceros una forma sencilla de verificar su autenticidad e integridad mediante un portal público. [cite: 41]
+
+\subsection{Objetivos específicos}
+
+\begin{itemize}
+    \item Permitir que usuarios autorizados firmen documentos desde la aplicación. [cite: 42]
+    \item Generar un folio único para cada documento emitido.
+    \item Calcular y almacenar el hash SHA-256 del documento firmado. [cite: 43]
+    \item Asociar cada documento con el usuario firmante y su certificado digital. [cite: 44]
+    \item Insertar o asociar un código QR de verificación al documento. [cite: 45]
+    \item Crear un portal público de consulta para validar documentos. [cite: 46]
+    \item Registrar cada firma y verificación en una bitácora de auditoría. [cite: 47]
+    \item Permitir la revocación de documentos en caso de error, vencimiento o uso indebido. [cite: 48]
+\end{itemize}
+
+\section{Solución propuesta}
+
+La solución propuesta consiste en agregar un módulo de firma y verificación documental al sistema ya desarrollado. [cite: 49] Este módulo funcionaría como una extensión del gestor de identidades, aprovechando los usuarios, roles, certificados, llaves públicas, permisos RBAC y bitácoras de auditoría existentes. [cite: 50] El sistema tendría dos grandes partes. La primera sería interna y estaría disponible solo para usuarios autorizados de Casa Monarca. [cite: 51] Desde ahí se cargarían, revisarían y firmarían documentos oficiales. La segunda sería externa y pública, permitiendo que cualquier tercero pueda verificar un documento sin necesidad de iniciar sesión. [cite: 52]
+
+\subsection{Componentes principales}
+
+\begin{longtable}{p{4cm}p{10cm}}
+\toprule
+\textbf{Componente} & \textbf{Descripción} \\
+\midrule
+Gestor de documentos & Módulo donde se cargan los archivos que serán firmados por la OSF. [cite: 53] \\
+Servicio de hash & Calcula la huella SHA-256 del documento original. [cite: 54] \\
+Servicio de firma digital & Firma el hash del documento usando la llave privada del usuario autorizado. [cite: 55] \\
+Base de datos documental & Guarda folio, hash, firma, usuario firmante, fecha, estado y metadatos. [cite: 56] \\
+Portal de verificación & Página pública donde terceros pueden validar documentos. [cite: 57] \\
+Código QR & Enlace rápido al portal de verificación del documento. [cite: 58] \\
+Bitácora de auditoría & Registro de firmas, verificaciones, errores y revocaciones. [cite: 59] \\
+Servicio de revocación & Permite invalidar documentos emitidos en caso de corrección, vencimiento o incidente. [cite: 60] \\
+\bottomrule
+\end{longtable}
+
+\section{Diseño funcional del sistema}
+
+\subsection{Roles involucrados}
+
+\begin{longtable}{p{3cm}p{11cm}}
+\toprule
+\textbf{Rol} & \textbf{Funciones dentro del sistema} \\
+\midrule
+Administrador & Gestiona usuarios, certificados, permisos, documentos emitidos y revocaciones. [cite: 61] \\
+Coordinador & Puede firmar documentos autorizados de acuerdo con su rol y área. [cite: 62] \\
+Operativo & Puede preparar o cargar documentos, pero no necesariamente firmarlos. \\
+Voluntario & No firma documentos oficiales; [cite: 63] puede consultar documentos internos permitidos. \\
+Tercero externo & Verifica documentos desde el portal público sin iniciar sesión. [cite: 64] \\
+\bottomrule
+\end{longtable}
+
+\subsection{Estados del documento}
+
+Cada documento firmado debe tener un estado dentro del sistema para facilitar su control. [cite: 65]
+\begin{longtable}{p{3.5cm}p{10.5cm}}
+\toprule
+\textbf{Estado} & \textbf{Significado} \\
+\midrule
+Borrador & Documento cargado, pero todavía no firmado. [cite: 66] \\
+Firmado & Documento emitido oficialmente y con firma digital válida. \\
+Verificado & Documento consultado exitosamente por un tercero. [cite: 67] \\
+Revocado & Documento invalidado por la organización. \\
+Expirado & Documento cuya vigencia terminó. [cite: 68] \\
+Rechazado & Documento que no cumple validaciones internas. \\
+\bottomrule
+\end{longtable}
+
+\section{Flujo interno de firma documental}
+
+El flujo interno corresponde al proceso que sigue Casa Monarca para emitir un documento auténtico. [cite: 69]
+
+\subsection{Paso 1: Inicio de sesión}
+
+El usuario autorizado ingresa a la aplicación. [cite: 70] Si tiene rol privilegiado, como Administrador o Coordinador, debe autenticarse con contraseña, certificado digital y llave privada, siguiendo el esquema de autenticación bifurcada definido en la primera etapa. [cite: 71]
+
+\subsection{Paso 2: Carga del documento}
+
+El usuario carga el documento que desea firmar. [cite: 72] El archivo puede ser PDF, carta institucional, constancia, reporte o documento administrativo. [cite: 73] El sistema valida que el archivo tenga un formato permitido y que no exceda el tamaño máximo establecido. [cite: 74]
+
+\subsection{Paso 3: Validación de permisos}
+
+Antes de firmar, el backend revisa si el usuario tiene permiso para emitir ese tipo de documento. [cite: 75] Por ejemplo, un coordinador podría firmar constancias de atención, pero no documentos administrativos reservados para dirección. [cite: 76]
+
+\subsection{Paso 4: Generación del hash}
+
+El sistema calcula el hash SHA-256 del archivo. Esta huella representa el contenido exacto del documento. [cite: 77]
+
+\begin{lstlisting}[language=Python, caption={Ejemplo conceptual de generación de hash}]
+import hashlib
+
+def calcular_hash_documento(ruta_archivo):
+    sha256 = hashlib.sha256()
+    with open(ruta_archivo, "rb") as archivo:
+        for bloque in iter(lambda: archivo.read(4096), b""):
+            sha256.update(bloque)
+    return sha256.hexdigest()
+\end{lstlisting}
+
+\subsection{Paso 5: Firma digital}
+
+El sistema firma el hash usando la llave privada del usuario autorizado. [cite: 78] La firma queda asociada al documento, al certificado público del firmante y al folio generado. [cite: 79]
+
+\subsection{Paso 6: Registro en base de datos}
+
+El sistema guarda los metadatos del documento. [cite: 80] No es obligatorio almacenar el documento completo si se desea reducir riesgos; [cite: 81] puede almacenarse únicamente el hash, firma, folio, fecha y datos mínimos. [cite: 82]
+
+\subsection{Paso 7: Generación de folio y QR}
+
+Se genera un folio único, por ejemplo:
+
+\begin{center}
+\texttt{CM-2026-DOC-000145}
+\end{center}
+
+También se genera un código QR que apunta al portal de verificación:
+
+\begin{center}
+\texttt{https://verifica.casamonarca.org/documento/CM-2026-DOC-000145}
+\end{center}
+
+\subsection{Paso 8: Entrega del documento}
+
+El documento final puede incluir el folio, el QR y una leyenda de verificación. [cite: 83] Por ejemplo:
+
+\begin{infobox}[Leyenda sugerida]
+Este documento fue emitido por Casa Monarca y puede verificarse escaneando el código QR o ingresando el folio en el portal oficial de verificación. [cite: 84]
+\end{infobox}
+
+\section{Flujo externo de verificación}
+
+El flujo externo está pensado para instituciones, aliados o personas que reciben un documento emitido por Casa Monarca. [cite: 85]
+
+\subsection{Verificación mediante código QR}
+
+El usuario externo escanea el código QR incluido en el documento. [cite: 86] El QR lo dirige al portal público de verificación. El sistema muestra el estado del documento y datos básicos como folio, fecha de emisión, nombre del firmante, rol del firmante y estado actual. [cite: 87]
+
+\subsection{Verificación mediante carga de archivo}
+
+Como medida más robusta, el portal también debe permitir cargar el documento recibido. [cite: 88] El sistema calcula nuevamente el hash del archivo cargado y lo compara con el hash almacenado en la base de datos. [cite: 89] Si el hash coincide, significa que el archivo no fue modificado. [cite: 90] Si no coincide, el portal debe mostrar una alerta indicando que el documento no corresponde exactamente al emitido por Casa Monarca. [cite: 91]
+
+\subsection{Resultados posibles}
+
+\begin{longtable}{p{4cm}p{10cm}}
+\toprule
+\textbf{Resultado} & \textbf{Mensaje sugerido} \\
+\midrule
+Documento válido & El documento fue emitido por Casa Monarca y su contenido coincide con el registro original. [cite: 92] \\
+Documento alterado & El folio existe, pero el archivo cargado no coincide con el documento originalmente firmado. [cite: 93] \\
+Documento revocado & El documento fue emitido, pero actualmente se encuentra revocado por Casa Monarca. [cite: 94] \\
+Documento expirado & El documento fue válido, pero su vigencia terminó. [cite: 95] \\
+Documento no encontrado & No existe un documento registrado con ese folio. [cite: 96] \\
+Firma inválida & La firma criptográfica no corresponde con el certificado registrado. [cite: 97] \\
+\bottomrule
+\end{longtable}
+
+\section{Arquitectura propuesta}
+
+La arquitectura mantiene el enfoque por capas utilizado en la primera etapa, agregando una capa documental. [cite: 98]
+
+\begin{figure} [h]
+    \centering
+    \includegraphics[width=1\linewidth]{arqSistema.png}
+    \caption{Arquitectura del Sistema (elaboración propia)}
+    \label{fig:placeholder}
+\end{figure}
+
+\subsection{Capa 1: Autenticación y sesión}
+
+Valida la identidad del usuario que desea firmar documentos. [cite: 99] Para usuarios privilegiados se mantiene el uso de certificado digital, llave privada y contraseña. [cite: 100]
+
+\subsection{Capa 2: Autorización RBAC}
+
+Determina qué usuarios pueden cargar, firmar, revocar o consultar documentos. [cite: 101] Esta capa evita que un usuario con permisos bajos pueda emitir documentos oficiales. [cite: 102]
+
+\subsection{Capa 3: Validación documental}
+
+Revisa formato, tamaño, tipo de archivo, campos obligatorios, folio, vigencia y permisos relacionados con el tipo documental. [cite: 103]
+
+\subsection{Capa 4: Firma y verificación criptográfica}
+
+Calcula el hash del documento, genera la firma digital, verifica firmas y compara hashes cuando un tercero carga un archivo para validarlo. [cite: 104]
+
+\subsection{Capa 5: Persistencia y auditoría}
+
+Guarda metadatos, estados del documento, registros de verificación, revocaciones y eventos críticos. [cite: 105]
+
+\begin{center}
+\begin{tabular}{|p{4cm}|p{9cm}|}
+\hline
+\textbf{Capa} & \textbf{Función} \\
+\hline
+Frontend interno & Carga, firma y administración de documentos. [cite: 106] \\
+\hline
+Backend FastAPI & Orquesta validaciones, permisos y servicios criptográficos. \\
+\hline
+Servicios criptográficos & Hash, firma digital, verificación y manejo de certificados. [cite: 107] \\
+\hline
+Base de datos & Almacena folios, hashes, firmas, estados y auditoría. [cite: 108] \\
+\hline
+Portal público & Permite verificar documentos mediante QR, folio o carga de archivo. [cite: 109] \\
+\hline
+\end{tabular}
+\end{center}
+
+\section{Herramientas propuestas}
+
+\subsection{Backend}
+
+Se propone mantener FastAPI como framework principal del backend, ya que permite organizar endpoints, validar entradas y conectar con servicios de autenticación, firma y auditoría. [cite: 110]
+
+\subsection{Base de datos}
+
+Se puede utilizar MySQL o PostgreSQL para almacenar la información documental. [cite: 111] La base de datos debe incluir tablas para documentos, firmas, certificados, verificaciones y revocaciones. [cite: 112]
+
+\subsection{Criptografía}
+
+La librería \texttt{cryptography} en Python se utilizaría para manejar firmas digitales, llaves públicas, llaves privadas y certificados X.509. [cite: 113]
+
+\subsection{Hashing}
+
+Para la huella digital del documento se recomienda SHA-256, implementado mediante \texttt{hashlib}. [cite: 114]
+
+\subsection{Generación de QR}
+
+Para generar códigos QR puede utilizarse una librería como \texttt{qrcode} en Python. [cite: 115] El QR no contiene información sensible, solamente el enlace o folio de verificación. [cite: 116]
+
+\subsection{Frontend}
+
+El frontend debe incluir dos interfaces principales:
+
+\begin{itemize}
+    \item Panel interno para usuarios autorizados. [cite: 117]
+    \item Portal público para verificación externa.
+\end{itemize}
+
+\subsection{Almacenamiento de documentos}
+
+Existen dos opciones. [cite: 118] La primera es almacenar el documento firmado completo en el servidor. [cite: 119] La segunda, más segura, es almacenar únicamente el hash y metadatos. [cite: 120] Para Casa Monarca se recomienda almacenar el hash y los metadatos mínimos, evitando guardar documentos sensibles completos si no es necesario. [cite: 121]
+
+\section{Diseño de base de datos}
+
+Se propone agregar las siguientes tablas al sistema existente. [cite: 122]
+
+\subsection{Tabla documents}
+
+\begin{lstlisting}[language=SQL]
+CREATE TABLE documents (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    folio VARCHAR(50) UNIQUE NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    document_type VARCHAR(100) NOT NULL,
+    document_hash VARCHAR(64) NOT NULL,
+    signature TEXT NOT NULL,
+    signer_user_id INT NOT NULL,
+    certificate_serial VARCHAR(255) NOT NULL,
+    status VARCHAR(30) NOT NULL,
+    issued_at DATETIME NOT NULL,
+    expires_at DATETIME NULL,
+    revoked_at DATETIME NULL,
+    revocation_reason TEXT NULL,
+    created_at DATETIME [cite: 123] DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (signer_user_id) REFERENCES users(id)
+); [cite: 124] 
+\end{lstlisting}
+
+\subsection{Tabla document\_verifications}
+
+\begin{lstlisting}[language=SQL]
+CREATE TABLE document_verifications (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    document_id INT NULL,
+    folio_entered VARCHAR(50),
+    result VARCHAR(50) NOT NULL,
+    ip_address VARCHAR(100),
+    user_agent TEXT,
+    verified_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (document_id) REFERENCES documents(id)
+); [cite: 125] 
+\end{lstlisting}
+
+\subsection{Tabla document\_types}
+
+\begin{lstlisting}[language=SQL]
+CREATE TABLE document_types (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) UNIQUE NOT NULL,
+    description TEXT,
+    requires_signature_role VARCHAR(50),
+    default_validity_days INT NULL,
+    active BOOLEAN DEFAULT TRUE
+); [cite: 126] 
+\end{lstlisting}
+
+\section{Endpoints propuestos}
+
+\begin{longtable}{p{4.5cm}p{3cm}p{6.5cm}}
+\toprule
+\textbf{Endpoint} & \textbf{Método} & \textbf{Función} \\
+\midrule
+\texttt{/documents/upload} & POST & Cargar documento en borrador. [cite: 127] \\
+\texttt{/documents/sign} & POST & Firmar documento autorizado. \\
+\texttt{/documents/\{folio\}} & GET & Consultar documento desde el sistema interno. [cite: 128] \\
+\texttt{/documents/revoke} & POST & Revocar un documento emitido. \\
+\texttt{/verify/\{folio\}} & GET & Verificar folio desde portal público. [cite: 129] \\
+\texttt{/verify/upload} & POST & Verificar documento cargado por un tercero. \\
+\texttt{/documents/audit} & GET & Consultar historial de firmas y verificaciones. [cite: 130] \\
+\bottomrule
+\end{longtable}
+
+\section{Interacción de usuarios}
+
+\subsection{Usuario autorizado interno}
+
+El usuario autorizado entra al sistema, carga el archivo, revisa la información, firma el documento y descarga la versión final con QR. [cite: 131] El sistema registra quién firmó, cuándo firmó y desde qué sesión se realizó la acción. [cite: 132]
+
+\subsection{Administrador}
+
+El administrador puede consultar todos los documentos emitidos, revocar documentos, revisar bitácoras y administrar qué roles pueden firmar cada tipo de documento. [cite: 133]
+
+\subsection{Usuario externo}
+
+El usuario externo no necesita cuenta. Solo escanea el QR, escribe el folio o carga el documento recibido. [cite: 134] El portal le indica si el documento es válido, alterado, revocado, expirado o inexistente. [cite: 135]
+
+\section{Flujo completo del sistema}
+
+\begin{enumerate}
+    \item El colaborador autorizado inicia sesión. [cite: 136]
+    \item El sistema valida su identidad y rol.
+    \item El colaborador carga el documento. [cite: 137]
+    \item El sistema valida formato, tamaño y permisos.
+    \item Se calcula el hash SHA-256 del archivo. [cite: 138]
+    \item El hash se firma con la llave privada del usuario autorizado.
+    \item Se genera un folio único. [cite: 139]
+    \item Se guarda el registro en la base de datos.
+    \item Se genera un QR con el enlace de verificación. [cite: 140]
+    \item El documento se entrega al destinatario.
+    \item El destinatario escanea el QR o carga el archivo. [cite: 141]
+    \item El portal verifica folio, hash, firma, estado y vigencia.
+    \item El sistema muestra el resultado de la verificación. [cite: 142]
+    \item La consulta queda registrada en auditoría.
+\end{enumerate}
+
+\section{Seguridad del sistema}
+
+\subsection{Protección contra falsificación}
+
+Una persona externa no podría generar un documento válido porque no tendría acceso a la llave privada de los usuarios autorizados ni podría registrar un hash válido dentro de la base de datos. [cite: 143]
+
+\subsection{Protección contra alteración}
+
+Si alguien modifica el documento después de su emisión, el hash del archivo cambiaría. [cite: 144] Al subirlo al portal de verificación, el sistema detectaría que ya no coincide con el hash registrado. [cite: 145]
+
+\subsection{Protección contra uso de documentos revocados}
+
+Si Casa Monarca revoca un documento, el portal público debe mostrar que el documento ya no es válido, incluso si el archivo original no fue alterado. [cite: 146]
+
+\subsection{Protección de datos sensibles}
+
+El portal público no debe mostrar información privada de personas migrantes. [cite: 147] Solo debe mostrar datos mínimos como folio, tipo de documento, fecha, estado y firmante institucional. [cite: 148]
+
+\begin{warningbox}[Cuidado con la información pública]
+El portal externo nunca debe mostrar datos personales sensibles. [cite: 149] La verificación debe confirmar autenticidad sin exponer información protegida.
+\end{warningbox}
+
+\section{Diseño de interfaz}
+
+\subsection{Panel interno de documentos}
+
+El panel interno debe mostrar una tabla con folio, tipo de documento, firmante, fecha, estado y acciones disponibles. [cite: 150] Las acciones dependen del rol del usuario.
+
+\begin{itemize}
+    \item Cargar documento.
+    \item Firmar documento. [cite: 151]
+    \item Descargar documento firmado.
+    \item Revocar documento.
+    \item Consultar historial. [cite: 152]
+\end{itemize}
+
+\subsection{Portal público de verificación}
+
+El portal público debe ser simple y claro. [cite: 153] Debe incluir:
+
+\begin{itemize}
+    \item Campo para ingresar folio.
+    \item Botón para subir documento. [cite: 154]
+    \item Lector o acceso mediante QR.
+    \item Resultado visual de verificación.
+    \item Mensaje claro de validez. [cite: 155]
+\end{itemize}
+
+\subsection{Mensajes visuales}
+
+Se recomienda utilizar colores tipo semáforo:
+
+\begin{itemize}
+    \item Verde: documento válido. [cite: 156]
+    \item Amarillo: documento expirado o pendiente de revisión.
+    \item Rojo: documento alterado, revocado o inexistente. [cite: 157]
+    \item Gris: documento sin vigencia activa.
+\end{itemize}
+
+\section{Casos de uso}
+
+\subsection{Caso de uso 1: Firma de documento}
+
+\begin{longtable}{p{4cm}p{10cm}}
+\toprule
+\textbf{Elemento} & \textbf{Descripción} \\
+\midrule
+Actor principal & Coordinador autorizado. [cite: 158] \\
+Objetivo & Firmar digitalmente un documento institucional. \\
+Precondición & El usuario debe tener sesión activa y permiso de firma. [cite: 159] \\
+Flujo & Carga archivo, valida datos, firma y genera QR. \\
+Resultado & Documento registrado como firmado y verificable externamente. [cite: 160] \\
+\bottomrule
+\end{longtable}
+
+\subsection{Caso de uso 2: Verificación externa}
+
+\begin{longtable}{p{4cm}p{10cm}}
+\toprule
+\textbf{Elemento} & \textbf{Descripción} \\
+\midrule
+Actor principal & Persona externa o institución receptora. [cite: 161] \\
+Objetivo & Comprobar si el documento es auténtico. \\
+Precondición & Tener folio, QR o archivo recibido. [cite: 162] \\
+Flujo & Ingresa folio, escanea QR o sube documento. \\
+Resultado & El sistema muestra si el documento es válido o no. [cite: 163] \\
+\bottomrule
+\end{longtable}
+
+\subsection{Caso de uso 3: Revocación de documento}
+
+\begin{longtable}{p{4cm}p{10cm}}
+\toprule
+\textbf{Elemento} & \textbf{Descripción} \\
+\midrule
+Actor principal & Administrador. \\
+Objetivo & Invalidar un documento emitido. [cite: 164] \\
+Precondición & El documento debe existir y estar firmado. \\
+Flujo & Selecciona documento, escribe motivo y confirma revocación. [cite: 165] \\
+Resultado & El documento aparece como revocado en el portal público. [cite: 166] \\
+\bottomrule
+\end{longtable}
+
+\section{Auditoría y trazabilidad}
+
+Cada operación importante debe registrarse en una bitácora. [cite: 167] Esto incluye firmas, verificaciones, intentos fallidos, revocaciones y cambios de estado. [cite: 168] Los campos sugeridos para auditoría son:
+
+\begin{itemize}
+    \item Usuario que realizó la acción.
+    \item Documento afectado. [cite: 169]
+    \item Acción realizada.
+    \item Fecha y hora.
+    \item Dirección IP.
+    \item Resultado.
+    \item Motivo, si aplica. [cite: 170]
+\end{itemize}
+
+Esta bitácora permite revisar incidentes y demostrar que el sistema mantiene trazabilidad sobre documentos críticos. [cite: 171]
+
+\section{Ventajas de la propuesta}
+
+\begin{itemize}
+    \item Reduce el riesgo de falsificación documental. [cite: 172]
+    \item Permite verificación pública sin exponer datos sensibles.
+    \item Aprovecha la infraestructura criptográfica de la etapa anterior. [cite: 173]
+    \item Mejora la confianza de aliados e instituciones externas.
+    \item Mantiene evidencia de quién firmó cada documento. [cite: 174]
+    \item Facilita auditorías internas.
+    \item Permite revocar documentos cuando sea necesario. [cite: 175]
+\end{itemize}
+
+\section{Limitaciones}
+
+La solución depende de que las llaves privadas sean protegidas correctamente por los usuarios autorizados. [cite: 176] Si una llave privada se pierde o se comparte indebidamente, se debe revocar el certificado correspondiente y bloquear la capacidad de firma del usuario afectado. [cite: 177] Otra limitación es que el sistema no evita que alguien copie visualmente el diseño de un documento, pero sí permite demostrar si ese documento falso no existe en el sistema o si su contenido no coincide con el hash original. [cite: 178]
+
+\section{Trabajo futuro}
+
+Como trabajo futuro, se podría integrar sellado de tiempo emitido por una autoridad externa, almacenamiento en una nube segura, generación automática de PDF firmado, integración con correo institucional y validación mediante API para organizaciones aliadas. [cite: 179] También se podría implementar una cadena de confianza más formal mediante una Autoridad Certificadora interna documentada y políticas de rotación de llaves, revocación de certificados y renovación periódica. [cite: 180]
+
+\section{Conclusión Parte 2}
+
+El sistema de verificación externa de documentos propuesto permite extender la seguridad del gestor de identidades hacia el ciclo de vida documental de Casa Monarca. [cite: 181] La propuesta protege la autenticidad, integridad y trazabilidad de documentos emitidos por la organización, utilizando firmas digitales, hashes criptográficos, certificados X.509, códigos QR y un portal público de verificación. [cite: 182] Con este diseño, Casa Monarca podría emitir documentos verificables por terceros sin comprometer información sensible. [cite: 183] Además, la solución mantiene una experiencia sencilla para usuarios internos y externos, lo cual es esencial para una organización humanitaria que necesita seguridad sin sacrificar usabilidad. [cite: 184]
+
+\end{document}

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.config import settings
 from app.crypto import database_crypto
 from app.db import engine
-from app.models import AuditLog, Beneficiario, Notification, Permission, Role, RolePermission, SystemSecret, User
+from app.models import AuditLog, Beneficiario, Document, DocumentVerification, Notification, Permission, Role, RolePermission, SystemSecret, User
 
 ROLE_DEFINITIONS = {
     "ADMIN": {
@@ -33,6 +33,9 @@ ROLE_DEFINITIONS = {
             ("audit", "view"),
             ("admin_recovery", "activate"),
             ("certificates", "view"),
+            ("documents", "sign"),
+            ("documents", "view"),
+            ("documents", "revoke"),
         ],
     },
     "COORDINADOR": {
@@ -40,6 +43,7 @@ ROLE_DEFINITIONS = {
         "permissions": [
             ("documents", "view"),
             ("documents", "edit"),
+            ("documents", "sign"),
             ("operations", "view"),
             ("certificates", "view"),
         ],
@@ -1621,6 +1625,360 @@ class AdminRecoveryService:
         db.refresh(actor)
         db.refresh(backup)
         return actor, backup
+
+
+def _folio_lookup(folio: str) -> str:
+    return database_crypto.lookup_digest(folio.strip()) or ""
+
+
+def _doc_status_lookup(status: str) -> str:
+    return database_crypto.lookup_digest(status.strip()) or ""
+
+
+ALLOWED_DOC_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".odt"}
+MAX_DOC_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
+DOC_TYPE_LABELS = {
+    "constancia": "Constancia",
+    "carta": "Carta institucional",
+    "reporte": "Reporte",
+    "oficio": "Oficio",
+    "otro": "Otro",
+}
+DOC_STATUS_LABELS = {
+    "draft": "Borrador",
+    "signed": "Firmado",
+    "verified": "Verificado",
+    "revoked": "Revocado",
+    "expired": "Expirado",
+}
+
+
+class DocumentService:
+
+    @staticmethod
+    def _generate_folio() -> str:
+        year = datetime.utcnow().strftime("%Y")
+        unique_part = secrets.token_hex(4).upper()
+        return f"CM-{year}-DOC-{unique_part}"
+
+    @staticmethod
+    def compute_hash(file_bytes: bytes) -> str:
+        return hashlib.sha256(file_bytes).hexdigest()
+
+    @staticmethod
+    def sign_document(
+        db: Session,
+        *,
+        file_bytes: bytes,
+        title: str,
+        document_type: str,
+        signer: User,
+        original_filename: str | None = None,
+        expires_days: int | None = None,
+    ) -> Document:
+        if not role_requires_crypto(signer):
+            raise ValueError("Solo usuarios con rol privilegiado pueden firmar documentos")
+        if signer.status != "active":
+            raise ValueError("El usuario firmante no está activo")
+        if not signer.certificate_pem:
+            raise ValueError("El usuario firmante no tiene certificado emitido")
+
+        # Validate file
+        if original_filename:
+            ext = Path(original_filename).suffix.lower()
+            if ext and ext not in ALLOWED_DOC_EXTENSIONS:
+                raise ValueError(f"Formato de archivo no permitido: {ext}")
+        if len(file_bytes) > MAX_DOC_SIZE_BYTES:
+            raise ValueError("El archivo excede el tamaño máximo permitido (20 MB)")
+        if len(file_bytes) == 0:
+            raise ValueError("El archivo está vacío")
+
+        # Compute hash
+        doc_hash = DocumentService.compute_hash(file_bytes)
+
+        # Load signing key from server-stored signer private key
+        signer_private_key = AdminSignerService.load_private_key(db, signer.id)
+        if signer_private_key is None:
+            raise ValueError(
+                "No se encontró la llave privada del firmante en el servidor. "
+                "El administrador debe re-emitir las credenciales."
+            )
+
+        # Sign the hash with RSA-PSS-SHA256
+        hash_bytes = doc_hash.encode("utf-8")
+        signature_bytes = signer_private_key.sign(
+            hash_bytes,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH,
+            ),
+            hashes.SHA256(),
+        )
+
+        # Verify the signature immediately
+        cert = x509.load_pem_x509_certificate(signer.certificate_pem.encode())
+        public_key = cert.public_key()
+        public_key.verify(
+            signature_bytes,
+            hash_bytes,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH,
+            ),
+            hashes.SHA256(),
+        )
+
+        folio = DocumentService._generate_folio()
+        expires_at = None
+        if expires_days and expires_days > 0:
+            expires_at = datetime.utcnow() + timedelta(days=expires_days)
+
+        doc = Document(
+            folio=folio,
+            title=title.strip(),
+            document_type=document_type,
+            document_hash=doc_hash,
+            signature=base64.b64encode(signature_bytes).decode(),
+            signer_user_id=signer.id,
+            certificate_serial=signer.certificate_serial,
+            certificate_pem_snapshot=signer.certificate_pem,
+            status="signed",
+            issued_at=datetime.utcnow(),
+            expires_at=expires_at,
+            original_filename=original_filename,
+            file_size=len(file_bytes),
+        )
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+        return doc
+
+    @staticmethod
+    def find_by_folio(db: Session, folio: str) -> Document | None:
+        docs = list(
+            db.scalars(
+                select(Document)
+                .options(joinedload(Document.signer).joinedload(User.role))
+            ).all()
+        )
+        clean_folio = folio.strip().upper()
+        for doc in docs:
+            if doc.folio.upper() == clean_folio:
+                return doc
+        return None
+
+    @staticmethod
+    def find_by_hash(db: Session, document_hash: str) -> Document | None:
+        docs = list(
+            db.scalars(
+                select(Document)
+                .options(joinedload(Document.signer).joinedload(User.role))
+            ).all()
+        )
+        for doc in docs:
+            if doc.document_hash == document_hash:
+                return doc
+        return None
+
+    @staticmethod
+    def list_documents(db: Session) -> list[Document]:
+        return list(
+            db.scalars(
+                select(Document)
+                .options(joinedload(Document.signer).joinedload(User.role))
+                .order_by(Document.id.desc())
+            ).all()
+        )
+
+    @staticmethod
+    def list_by_signer(db: Session, signer_id: int) -> list[Document]:
+        docs = DocumentService.list_documents(db)
+        return [d for d in docs if d.signer_user_id == signer_id]
+
+    @staticmethod
+    def verify_by_folio(
+        db: Session,
+        folio: str,
+        *,
+        ip_address: str | None = None,
+        user_agent_str: str | None = None,
+    ) -> tuple[Document | None, str]:
+        doc = DocumentService.find_by_folio(db, folio)
+        if not doc:
+            db.add(DocumentVerification(
+                document_id=None,
+                folio_entered=folio.strip(),
+                result="not_found",
+                ip_address=ip_address,
+                user_agent=user_agent_str,
+            ))
+            db.commit()
+            return None, "not_found"
+
+        result = DocumentService._check_document_status(doc)
+
+        db.add(DocumentVerification(
+            document_id=doc.id,
+            folio_entered=folio.strip(),
+            result=result,
+            ip_address=ip_address,
+            user_agent=user_agent_str,
+        ))
+        db.commit()
+        return doc, result
+
+    @staticmethod
+    def verify_by_file(
+        db: Session,
+        folio: str | None,
+        file_bytes: bytes,
+        *,
+        ip_address: str | None = None,
+        user_agent_str: str | None = None,
+    ) -> tuple[Document | None, str]:
+        uploaded_hash = DocumentService.compute_hash(file_bytes)
+
+        # Find by folio if provided, otherwise search by hash
+        if folio and folio.strip():
+            doc = DocumentService.find_by_folio(db, folio)
+        else:
+            doc = DocumentService.find_by_hash(db, uploaded_hash)
+            folio = folio or ""
+
+        if not doc:
+            db.add(DocumentVerification(
+                document_id=None,
+                folio_entered=folio.strip(),
+                uploaded_hash=uploaded_hash,
+                result="not_found",
+                ip_address=ip_address,
+                user_agent=user_agent_str,
+            ))
+            db.commit()
+            return None, "not_found"
+
+        # Check status first
+        status_result = DocumentService._check_document_status(doc)
+        if status_result != "valid":
+            db.add(DocumentVerification(
+                document_id=doc.id,
+                folio_entered=folio.strip(),
+                uploaded_hash=uploaded_hash,
+                result=status_result,
+                ip_address=ip_address,
+                user_agent=user_agent_str,
+            ))
+            db.commit()
+            return doc, status_result
+
+        # Compare hashes
+        if uploaded_hash != doc.document_hash:
+            db.add(DocumentVerification(
+                document_id=doc.id,
+                folio_entered=folio.strip(),
+                uploaded_hash=uploaded_hash,
+                result="tampered",
+                ip_address=ip_address,
+                user_agent=user_agent_str,
+            ))
+            db.commit()
+            return doc, "tampered"
+
+        # Verify cryptographic signature
+        try:
+            cert = x509.load_pem_x509_certificate(doc.certificate_pem_snapshot.encode())
+            public_key = cert.public_key()
+            signature_bytes = base64.b64decode(doc.signature)
+            public_key.verify(
+                signature_bytes,
+                doc.document_hash.encode("utf-8"),
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=padding.PSS.MAX_LENGTH,
+                ),
+                hashes.SHA256(),
+            )
+        except (InvalidSignature, Exception):
+            db.add(DocumentVerification(
+                document_id=doc.id,
+                folio_entered=folio.strip(),
+                uploaded_hash=uploaded_hash,
+                result="invalid_signature",
+                ip_address=ip_address,
+                user_agent=user_agent_str,
+            ))
+            db.commit()
+            return doc, "invalid_signature"
+
+        db.add(DocumentVerification(
+            document_id=doc.id,
+            folio_entered=folio.strip(),
+            uploaded_hash=uploaded_hash,
+            result="valid",
+            ip_address=ip_address,
+            user_agent=user_agent_str,
+        ))
+        db.commit()
+        return doc, "valid"
+
+    @staticmethod
+    def _check_document_status(doc: Document) -> str:
+        if doc.status == "revoked":
+            return "revoked"
+        if doc.status == "expired":
+            return "expired"
+        if doc.expires_at and doc.expires_at < datetime.utcnow():
+            doc.status = "expired"
+            return "expired"
+
+        # Verify signature integrity
+        try:
+            cert = x509.load_pem_x509_certificate(doc.certificate_pem_snapshot.encode())
+            public_key = cert.public_key()
+            signature_bytes = base64.b64decode(doc.signature)
+            public_key.verify(
+                signature_bytes,
+                doc.document_hash.encode("utf-8"),
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=padding.PSS.MAX_LENGTH,
+                ),
+                hashes.SHA256(),
+            )
+        except (InvalidSignature, Exception):
+            return "invalid_signature"
+
+        return "valid"
+
+    @staticmethod
+    def revoke_document(db: Session, doc: Document, reason: str) -> Document:
+        doc.status = "revoked"
+        doc.revoked_at = datetime.utcnow()
+        doc.revocation_reason = reason.strip()
+        doc.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(doc)
+        return doc
+
+    @staticmethod
+    def generate_qr_png(verification_url: str) -> bytes:
+        import io
+        import qrcode  # noqa: PLC0415
+
+        qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=2)
+        qr.add_data(verification_url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="#1a2332", back_color="white")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+
+    @staticmethod
+    def list_verifications(db: Session, document_id: int | None = None, limit: int = 50) -> list[DocumentVerification]:
+        stmt = select(DocumentVerification).order_by(DocumentVerification.id.desc()).limit(limit)
+        if document_id is not None:
+            stmt = stmt.where(DocumentVerification.document_id == document_id)
+        return list(db.scalars(stmt).all())
 
 
 class PasswordLoginService:

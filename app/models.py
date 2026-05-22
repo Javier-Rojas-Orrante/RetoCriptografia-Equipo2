@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.crypto import EncryptedJSON, EncryptedText, database_crypto
@@ -156,3 +156,55 @@ class Notification(Base):
         clean_value = value.strip()
         self.type_lookup = database_crypto.lookup_digest(clean_value)
         return clean_value
+
+
+class Document(Base):
+    __tablename__ = "documents"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    folio: Mapped[str] = mapped_column(EncryptedText(), nullable=False)
+    folio_lookup: Mapped[str | None] = mapped_column(String(80), unique=True, index=True, nullable=True)
+    title: Mapped[str] = mapped_column(EncryptedText(), nullable=False)
+    document_type: Mapped[str] = mapped_column(EncryptedText(), nullable=False)
+    document_hash: Mapped[str] = mapped_column(EncryptedText(), nullable=False)
+    signature: Mapped[str] = mapped_column(EncryptedText(), nullable=False)
+    signer_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    certificate_serial: Mapped[str] = mapped_column(EncryptedText(), nullable=False)
+    certificate_pem_snapshot: Mapped[str] = mapped_column(EncryptedText(), nullable=False)
+    status: Mapped[str] = mapped_column(EncryptedText(), nullable=False, default="signed")
+    status_lookup: Mapped[str | None] = mapped_column(String(80), index=True, nullable=True)
+    issued_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revocation_reason: Mapped[str | None] = mapped_column(EncryptedText(), nullable=True)
+    original_filename: Mapped[str | None] = mapped_column(EncryptedText(), nullable=True)
+    file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    signer: Mapped["User"] = relationship()
+
+    @validates("folio")
+    def _sync_folio_lookup(self, _key: str, value: str) -> str:
+        clean_value = value.strip()
+        self.folio_lookup = database_crypto.lookup_digest(clean_value)
+        return clean_value
+
+    @validates("status")
+    def _sync_doc_status_lookup(self, _key: str, value: str) -> str:
+        clean_value = value.strip()
+        self.status_lookup = database_crypto.lookup_digest(clean_value)
+        return clean_value
+
+
+class DocumentVerification(Base):
+    __tablename__ = "document_verifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    document_id: Mapped[int | None] = mapped_column(ForeignKey("documents.id"), nullable=True)
+    folio_entered: Mapped[str | None] = mapped_column(EncryptedText(), nullable=True)
+    uploaded_hash: Mapped[str | None] = mapped_column(EncryptedText(), nullable=True)
+    result: Mapped[str] = mapped_column(EncryptedText(), nullable=False)
+    ip_address: Mapped[str | None] = mapped_column(EncryptedText(), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(EncryptedText(), nullable=True)
+    verified_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

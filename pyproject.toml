@@ -12,7 +12,8 @@ dependencies = [
   "sqlalchemy>=2.0.35",
   "psycopg[binary]>=3.2.0",
   "pydantic-settings>=2.5.2",
-  "fpdf2>=2.7.0"
+  "fpdf2>=2.7.0",
+  "qrcode[pil]>=7.4"
 ]
 
 [build-system]

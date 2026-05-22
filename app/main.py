@@ -22,12 +22,16 @@ from app.services import (
     BeneficiarioService,
     BootstrapService,
     CertificateService,
+    DocumentService,
     NotificationService,
     PasswordLoginService,
     SignatureLoginService,
     SchemaService,
     UserService,
     role_requires_crypto,
+    DOC_TYPE_LABELS,
+    DOC_STATUS_LABELS,
+    CRYPTO_ROLE_CODES,
 )
 
 
@@ -173,6 +177,15 @@ def _get_session_actor(db: Session = Depends(get_db), session: dict = Depends(_r
     if not actor:
         raise HTTPException(status_code=303, headers={"Location": "/login"})
     return actor
+
+
+def _try_get_session_actor(request: Request, db: Session):
+    """Non-dependency helper: returns the User if a valid session exists, else None."""
+    token = request.cookies.get(_SESSION_COOKIE)
+    payload = _read_session_cookie(token)
+    if not payload:
+        return None
+    return UserService.get_user(db, payload["uid"])
 
 
 NOTICE_MESSAGES = {
@@ -650,6 +663,25 @@ def base_page(title: str, body: str, actor=None, portal_sections: list | None = 
           .crypto-missing {{ color: var(--muted); font-size: 12px; }}
           .crypto-once {{ color: var(--warn); font-size: 11px; font-weight: 600; }}
           .crypto-delivered {{ color: var(--muted); font-size: 12px; }}
+          /* ─── File drop zone ────────────────────────── */
+          .file-zone {{ position:relative; display:flex; align-items:center; gap:14px; border:1.5px solid #f0d4c5; border-radius:10px; padding:13px 16px; cursor:pointer; background:#fff8f5; transition:border-color .15s,background .15s; overflow:hidden; }}
+          .file-zone:hover {{ border-color:#e06020; background:#fff3eb; }}
+          .file-zone input[type="file"] {{ position:absolute; inset:0; opacity:0; width:100%; height:100%; cursor:pointer; }}
+          .file-zone-icon {{ width:36px; height:36px; border-radius:8px; background:#fff3eb; border:1px solid #f0d4c5; display:flex; align-items:center; justify-content:center; flex-shrink:0; }}
+          .file-zone-text {{ font-size:13px; font-weight:600; color:#1a2332; }}
+          .file-zone-sub {{ font-size:11px; color:#e06020; font-weight:500; }}
+          .file-zone.has-file {{ border-color:#22c55e; background:#f0fdf4; }}
+          .file-zone.has-file .file-zone-icon {{ background:#dcfce7; border-color:#86efac; }}
+          .file-zone.has-file .file-zone-text {{ color:#166534; }}
+          .file-zone.has-file .file-zone-sub {{ color:#16a34a; }}
+          /* ─── Searchable combobox ───────────────────── */
+          .combo-wrap {{ position:relative; }}
+          .combo-wrap input {{ width:100%; }}
+          .combo-list {{ display:none; position:absolute; top:100%; left:0; right:0; max-height:200px; overflow-y:auto; background:#fff; border:1px solid var(--border-strong); border-top:none; border-radius:0 0 var(--radius) var(--radius); box-shadow:0 4px 12px rgba(0,0,0,.1); z-index:50; }}
+          .combo-list.open {{ display:block; }}
+          .combo-item {{ padding:8px 12px; font-size:14px; cursor:pointer; }}
+          .combo-item:hover, .combo-item.active {{ background:var(--accent-light); color:var(--accent); }}
+          .combo-item.hidden {{ display:none; }}
           /* Page title style */
           .page-title {{ font-size: 30px; font-weight: 800; letter-spacing: -0.6px; line-height: 1.2; color: var(--text); }}
           .page-title-accent {{ width: 42px; height: 3px; background: var(--accent); border-radius: 2px; margin: 8px 0 6px; }}
@@ -1052,6 +1084,10 @@ def render_admin_register_page(actor, roles, error: str | None = None) -> str:
 _USER_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'
 _SHIELD_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>'
 _PEOPLE_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
+_DOC_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>'
+
+
+_VERIFY_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>'
 
 
 def _build_portal_sections(actor, section: str = "cuenta") -> list:
@@ -1069,6 +1105,13 @@ def _build_portal_sections(actor, section: str = "cuenta") -> list:
         sections.append((
             f"/portal?section=beneficiarios&as_user={aid}", "Beneficiarios", _PEOPLE_ICON_SVG, None, section == "beneficiarios",
         ))
+    if actor.status == "active" and actor.role.code in CRYPTO_ROLE_CODES:
+        sections.append((
+            f"/portal?section=documentos&as_user={aid}", "Documentos", _DOC_ICON_SVG, None, section == "documentos",
+        ))
+        sections.append((
+            "/verificar", "Verificar documento", _VERIFY_ICON_SVG, None, section == "verificar",
+        ))
     if actor.status == "active" and actor.role.code == "COORDINADOR":
         sections.append((
             f"/portal?section=directorio&as_user={aid}", "Directorio", _SHIELD_ICON_SVG, None, section == "directorio",
@@ -1085,6 +1128,7 @@ def render_portal_page(
     beneficiarios=None,
     issuer_name: str | None = None,
     section: str = "cuenta",
+    documents=None,
 ) -> str:
     permission_text = ", ".join(f"{item['resource']}:{item['action']}" for item in permissions) or "sin permisos"
     verified_html = (
@@ -1526,11 +1570,176 @@ def render_portal_page(
     </div>
     """
 
+    # --- Section: Documentos (firma y verificación) ---
+    _documentos_content = ""
+    if actor.status == "active" and actor.role.code in CRYPTO_ROLE_CODES:
+        doc_list = documents or []
+        doc_type_options = "".join(
+            f'<option value="{k}">{escape(v)}</option>' for k, v in DOC_TYPE_LABELS.items()
+        )
+        doc_type_combo_items = "".join(
+            f'<div class="combo-item" data-value="{k}" onclick="pickCombo(this)">{escape(v)}</div>'
+            for k, v in DOC_TYPE_LABELS.items()
+        )
+
+        _DOC_STATUS_CSS = {
+            "signed": "active",
+            "verified": "active",
+            "revoked": "revoked",
+            "expired": "expired",
+            "draft": "pending",
+        }
+
+        doc_rows = ""
+        for d in doc_list:
+            st_css = _DOC_STATUS_CSS.get(d.status, "pending")
+            st_label = DOC_STATUS_LABELS.get(d.status, d.status)
+            doc_rows += f"""<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#fff;border-bottom:1px solid #e5ddd3;flex-wrap:wrap;">
+              <div style="flex:1;min-width:180px;">
+                <p style="font-weight:600;font-size:13px;color:#1a2332;">{escape(d.title)}</p>
+                <p style="font-size:12px;color:#6b7280;">
+                  <code style="font-size:11px;">{escape(d.folio)}</code> &middot;
+                  {escape(DOC_TYPE_LABELS.get(d.document_type, d.document_type))} &middot;
+                  {d.issued_at.strftime('%d/%m/%Y %H:%M')} &middot;
+                  Firmado por: {escape(d.signer.full_name)}
+                </p>
+              </div>
+              <span class="status status-{st_css}">{st_label}</span>
+              <a href="/ui/documents/{d.folio}/qr" style="font-size:12px;font-weight:600;color:var(--accent);text-decoration:none;">QR</a>
+              <a href="/verificar/{escape(d.folio)}" target="_blank" style="font-size:12px;font-weight:600;color:var(--accent);text-decoration:none;">Verificar</a>"""
+            if d.status == "signed" and (actor.role.code == "ADMIN" or d.signer_user_id == actor.id):
+                doc_rows += f"""
+              <form method="post" action="/ui/documents/{d.folio}/revoke" style="margin:0;display:inline;">
+                <input type="hidden" name="reason" value="">
+                <button type="submit" onclick="var r=prompt('Motivo de revocaci&oacute;n:');if(!r)return false;this.form.reason.value=r;return true;" style="background:none;border:1px solid #fca5a5;color:#dc2626;padding:4px 10px;border-radius:7px;font-size:11px;cursor:pointer;font-weight:500;">Revocar</button>
+              </form>"""
+            doc_rows += "</div>"
+
+        _documentos_content = f"""
+    <section style="margin-bottom:24px;">
+      <h1 class="page-title">Documentos</h1>
+      <div class="page-title-accent"></div>
+      <p class="muted" style="font-size:14px;margin-top:2px;">Firma digital de documentos y verificaci&oacute;n de autenticidad</p>
+      {render_notice(notice)}
+    </section>
+
+    <div class="card" style="padding:28px;margin-bottom:16px;">
+      <h2 style="margin-bottom:6px;">Firmar documento</h2>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:18px;">Carga un documento para firmarlo digitalmente con tu certificado X.509. Se generar&aacute; un folio &uacute;nico y un c&oacute;digo QR de verificaci&oacute;n.</p>
+
+      <div style="padding:12px 14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;display:flex;gap:10px;align-items:flex-start;margin-bottom:18px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div style="font-size:12px;color:#1e40af;line-height:1.5;">
+          <strong>Proceso criptogr&aacute;fico:</strong> Se calcula el hash SHA-256 del documento, se firma con tu llave privada RSA (RSA-PSS-SHA256) y se verifica inmediatamente con tu certificado p&uacute;blico. El documento original <strong>no se almacena</strong> en el servidor &mdash; solo el hash y la firma digital.
+        </div>
+      </div>
+
+      <form method="post" action="/ui/documents/sign" enctype="multipart/form-data">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+          <label style="display:flex;flex-direction:column;gap:4px;">T&iacute;tulo del documento
+            <input name="title" placeholder="Constancia de atenci&oacute;n, Carta institucional..." required>
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;">Tipo de documento
+            <div class="combo-wrap">
+              <input type="text" id="combo-doctype" placeholder="Buscar tipo..." autocomplete="off"
+                     onfocus="this.nextElementSibling.classList.add('open')"
+                     oninput="filterCombo(this)"
+                     onkeydown="comboKey(event,this)">
+              <div class="combo-list" id="combo-doctype-list">
+                {doc_type_combo_items}
+              </div>
+              <select name="document_type" id="combo-doctype-sel" required style="position:absolute;opacity:0;height:0;width:0;pointer-events:none;" tabindex="-1">
+                <option value="">-- Selecciona --</option>
+                {doc_type_options}
+              </select>
+            </div>
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;">Vigencia (d&iacute;as, opcional)
+            <input name="expires_days" type="number" min="1" max="3650" placeholder="Dejar vac&iacute;o para sin vencimiento">
+          </label>
+        </div>
+        <label style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px;">Archivo a firmar
+          <span style="font-size:11px;color:#9ca3af;">Formatos: PDF, DOC, DOCX, TXT, ODT &mdash; M&aacute;ximo 20 MB</span>
+          <div class="file-zone" style="margin-top:4px;">
+            <div class="file-zone-icon" style="width:36px;height:36px;border-radius:8px;background:#fff3eb;border:1px solid #f0d4c5;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e06020" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+            </div>
+            <div>
+              <div class="file-zone-text" id="docf-text">Arrastra tu documento aqu&iacute;</div>
+              <div class="file-zone-sub" id="docf-sub">o selecciona un archivo</div>
+            </div>
+            <input type="file" name="document_file" accept=".pdf,.doc,.docx,.txt,.odt" id="docf" required onchange="setDocFile(this)" style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;">
+          </div>
+        </label>
+        <button type="submit" style="background:var(--accent);color:#fff;padding:10px 22px;border-radius:8px;font-size:14px;font-weight:600;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:8px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Firmar documento
+        </button>
+      </form>
+    </div>
+
+    <div class="card" style="padding:24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+        <h2>Documentos firmados</h2>
+        <span style="background:#e0f2fe;color:#075985;border:1px solid #7dd3fc;border-radius:999px;padding:2px 12px;font-size:11px;font-weight:600;">{len(doc_list)} documento{'s' if len(doc_list) != 1 else ''}</span>
+      </div>
+      <div style="border:1px solid #e5ddd3;border-radius:10px;overflow:hidden;">
+        {doc_rows or '<p style="padding:16px;font-size:13px;color:#6b7280;">No hay documentos firmados a&uacute;n.</p>'}
+      </div>
+      <p style="font-size:12px;color:#6b7280;margin-top:12px;">
+        <a href="/verificar" target="_blank" style="font-weight:600;">Abrir portal p&uacute;blico de verificaci&oacute;n &rarr;</a>
+      </p>
+    </div>
+
+    <script>
+    function setDocFile(input) {{
+      var zone = input.closest('.file-zone');
+      var textEl = document.getElementById('docf-text');
+      var subEl = document.getElementById('docf-sub');
+      if (input.files && input.files.length > 0) {{
+        textEl.textContent = input.files[0].name;
+        subEl.textContent = (input.files[0].size / 1024).toFixed(1) + ' KB \\u2714';
+        zone.classList.add('has-file');
+      }} else {{
+        textEl.innerHTML = 'Arrastra tu documento aqu\\u00ed';
+        subEl.textContent = 'o selecciona un archivo';
+        zone.classList.remove('has-file');
+      }}
+    }}
+    /* ── Searchable combobox ── */
+    function filterCombo(inp) {{
+      var list = inp.nextElementSibling;
+      var q = inp.value.toLowerCase();
+      list.classList.add('open');
+      list.querySelectorAll('.combo-item').forEach(function(it) {{
+        it.classList.toggle('hidden', q && it.textContent.toLowerCase().indexOf(q) === -1);
+      }});
+    }}
+    function pickCombo(item) {{
+      var wrap = item.closest('.combo-wrap');
+      var inp = wrap.querySelector('input[type="text"]');
+      var sel = wrap.querySelector('select');
+      inp.value = item.textContent;
+      sel.value = item.getAttribute('data-value');
+      item.parentElement.classList.remove('open');
+    }}
+    function comboKey(e, inp) {{
+      if (e.key === 'Escape') inp.nextElementSibling.classList.remove('open');
+    }}
+    document.addEventListener('click', function(e) {{
+      document.querySelectorAll('.combo-list.open').forEach(function(cl) {{
+        if (!cl.parentElement.contains(e.target)) cl.classList.remove('open');
+      }});
+    }});
+    </script>
+    """
+
     _section_map = {
         "cuenta": _cuenta_content,
         "credenciales": _credenciales_content,
         "beneficiarios": _beneficiarios_content,
         "directorio": _directorio_content,
+        "documentos": _documentos_content,
     }
 
     body = f"""
@@ -2615,6 +2824,13 @@ def user_portal(
     logs = AuditService.list_recent(db)
     beneficiarios = BeneficiarioService.list_all(db)
     issuer_user = UserService.get_user(db, actor.certificate_issuer_user_id) if actor.certificate_issuer_user_id else None
+    # Load documents for users with signing rights
+    docs = []
+    if actor.status == "active" and actor.role.code in CRYPTO_ROLE_CODES:
+        if actor.role.code == "ADMIN":
+            docs = DocumentService.list_documents(db)
+        else:
+            docs = DocumentService.list_by_signer(db, actor.id)
     return HTMLResponse(
         render_portal_page(
             actor,
@@ -2625,6 +2841,7 @@ def user_portal(
             beneficiarios=beneficiarios,
             issuer_name=issuer_user.full_name if issuer_user else None,
             section=section,
+            documents=docs,
         )
     )
 
@@ -2747,6 +2964,428 @@ def admin_register_user(
         metadata={"source": "admin_register", "role": user.role.code},
     )
     return redirect_home(actor.id, "user-created")
+
+
+# ── Document signing & verification endpoints ─────────────────────────────
+
+NOTICE_MESSAGES["document-signed"] = "Documento firmado exitosamente. Se generó un folio único y código QR de verificación."
+NOTICE_MESSAGES["document-revoked"] = "El documento fue revocado correctamente."
+
+
+@app.post("/ui/documents/sign")
+async def ui_sign_document(
+    request: Request,
+    title: str = Form(...),
+    document_type: str = Form(...),
+    expires_days: str = Form(default=""),
+    document_file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    actor=Depends(_get_session_actor),
+):
+    if not AuthorizationService.authorize(db, actor, "documents", "sign"):
+        raise HTTPException(status_code=403, detail="No tienes permiso para firmar documentos")
+
+    file_bytes = await document_file.read()
+    exp_days = None
+    if expires_days.strip():
+        try:
+            exp_days = int(expires_days.strip())
+        except ValueError:
+            pass
+
+    ip = request.client.host if request.client else "desconocida"
+    ua = request.headers.get("user-agent", "desconocido")[:255]
+
+    try:
+        doc = DocumentService.sign_document(
+            db,
+            file_bytes=file_bytes,
+            title=title,
+            document_type=document_type,
+            signer=actor,
+            original_filename=document_file.filename,
+            expires_days=exp_days,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    AuditService.log(
+        db,
+        event_type="document_signed",
+        actor_user_id=actor.id,
+        action="sign_document",
+        resource="documents",
+        result="success",
+        metadata={
+            "folio": doc.folio,
+            "title": doc.title,
+            "document_type": doc.document_type,
+            "hash_sha256": doc.document_hash,
+            "certificate_serial": doc.certificate_serial,
+        },
+        ip_address=ip,
+        user_agent=ua,
+    )
+
+    resp = RedirectResponse(
+        url=f"/portal?section=documentos&{urlencode({'notice': 'document-signed'})}",
+        status_code=303,
+    )
+    return _login_redirect(resp, actor.id)
+
+
+@app.post("/ui/documents/{folio}/revoke")
+def ui_revoke_document(
+    folio: str,
+    request: Request,
+    reason: str = Form(default=""),
+    db: Session = Depends(get_db),
+    actor=Depends(_get_session_actor),
+):
+    if not AuthorizationService.authorize(db, actor, "documents", "revoke") and not (
+        AuthorizationService.authorize(db, actor, "documents", "sign")
+    ):
+        raise HTTPException(status_code=403, detail="No tienes permiso para revocar documentos")
+
+    doc = DocumentService.find_by_folio(db, folio)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+
+    if actor.role.code != "ADMIN" and doc.signer_user_id != actor.id:
+        raise HTTPException(status_code=403, detail="Solo puedes revocar documentos que tú firmaste")
+
+    ip = request.client.host if request.client else "desconocida"
+    ua = request.headers.get("user-agent", "desconocido")[:255]
+
+    DocumentService.revoke_document(db, doc, reason or "Revocado por el usuario")
+
+    AuditService.log(
+        db,
+        event_type="document_revoked",
+        actor_user_id=actor.id,
+        action="revoke_document",
+        resource="documents",
+        result="success",
+        metadata={"folio": doc.folio, "reason": reason},
+        ip_address=ip,
+        user_agent=ua,
+    )
+
+    resp = RedirectResponse(
+        url=f"/portal?section=documentos&{urlencode({'notice': 'document-revoked'})}",
+        status_code=303,
+    )
+    return _login_redirect(resp, actor.id)
+
+
+@app.get("/ui/documents/{folio}/qr")
+def ui_document_qr(folio: str, request: Request, db: Session = Depends(get_db)):
+    doc = DocumentService.find_by_folio(db, folio)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+
+    base_url = str(request.base_url).rstrip("/")
+    verification_url = f"{base_url}/verificar/{doc.folio}"
+    qr_bytes = DocumentService.generate_qr_png(verification_url)
+    return Response(content=qr_bytes, media_type="image/png")
+
+
+# ── Public verification portal (no login required) ────────────────────────
+
+def _render_verification_page(
+    result: str | None = None,
+    doc=None,
+    folio: str = "",
+    error: str | None = None,
+    actor=None,
+) -> str:
+    RESULT_CONFIG = {
+        "valid": ("&#10003; Documento v&aacute;lido", "El documento fue emitido por Casa Monarca y su contenido coincide con el registro original.", "#dcfce7", "#166534", "#86efac"),
+        "tampered": ("&#9888; Documento alterado", "El folio existe, pero el archivo cargado no coincide con el documento originalmente firmado.", "#fee2e2", "#991b1b", "#fca5a5"),
+        "revoked": ("&#10007; Documento revocado", "El documento fue emitido, pero actualmente se encuentra revocado por Casa Monarca.", "#fee2e2", "#991b1b", "#fca5a5"),
+        "expired": ("&#9888; Documento expirado", "El documento fue v&aacute;lido, pero su vigencia termin&oacute;.", "#fef3c7", "#92400e", "#fcd34d"),
+        "not_found": ("&#10007; Documento no encontrado", "No existe un documento registrado con ese folio.", "#fee2e2", "#991b1b", "#fca5a5"),
+        "invalid_signature": ("&#10007; Firma inv&aacute;lida", "La firma criptogr&aacute;fica no corresponde con el certificado registrado.", "#fee2e2", "#991b1b", "#fca5a5"),
+    }
+
+    result_html = ""
+    if result:
+        cfg = RESULT_CONFIG.get(result, ("Resultado desconocido", "", "#f3f4f6", "#374151", "#d1d5db"))
+        title, msg, bg, color, border = cfg
+        result_html = f"""
+        <div style="background:{bg};border:1px solid {border};color:{color};border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+          <p style="font-size:18px;font-weight:700;margin-bottom:6px;">{title}</p>
+          <p style="font-size:14px;line-height:1.5;">{msg}</p>
+        </div>"""
+
+        if doc and result != "not_found":
+            st_label = DOC_STATUS_LABELS.get(doc.status, doc.status)
+            signer_name = escape(doc.signer.full_name) if doc.signer else "Desconocido"
+            signer_role = escape(doc.signer.role.name) if doc.signer and doc.signer.role else ""
+            result_html += f"""
+        <div style="background:#fff;border:1px solid #e5ddd3;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+          <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:12px;">Datos del documento</p>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;">
+            <div>
+              <p style="font-size:11px;font-weight:600;color:#6b7280;">Folio</p>
+              <p style="font-weight:600;font-size:14px;"><code>{escape(doc.folio)}</code></p>
+            </div>
+            <div>
+              <p style="font-size:11px;font-weight:600;color:#6b7280;">T&iacute;tulo</p>
+              <p style="font-weight:500;font-size:14px;">{escape(doc.title)}</p>
+            </div>
+            <div>
+              <p style="font-size:11px;font-weight:600;color:#6b7280;">Tipo</p>
+              <p style="font-size:14px;">{escape(DOC_TYPE_LABELS.get(doc.document_type, doc.document_type))}</p>
+            </div>
+            <div>
+              <p style="font-size:11px;font-weight:600;color:#6b7280;">Estado</p>
+              <p style="font-size:14px;font-weight:600;">{st_label}</p>
+            </div>
+            <div>
+              <p style="font-size:11px;font-weight:600;color:#6b7280;">Fecha de emisi&oacute;n</p>
+              <p style="font-size:14px;">{doc.issued_at.strftime('%d/%m/%Y %H:%M')}</p>
+            </div>
+            <div>
+              <p style="font-size:11px;font-weight:600;color:#6b7280;">Firmado por</p>
+              <p style="font-size:14px;">{signer_name}</p>
+              <p style="font-size:11px;color:#6b7280;">{signer_role}</p>
+            </div>
+            <div>
+              <p style="font-size:11px;font-weight:600;color:#6b7280;">Hash SHA-256</p>
+              <p style="font-size:11px;font-family:monospace;word-break:break-all;">{escape(doc.document_hash)}</p>
+            </div>
+            <div>
+              <p style="font-size:11px;font-weight:600;color:#6b7280;">Algoritmo de firma</p>
+              <p style="font-size:14px;">RSA-PSS-SHA256</p>
+            </div>
+          </div>
+        </div>"""
+
+    error_html = f'<div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:14px;">{escape(error)}</div>' if error else ""
+
+    # ── Shared body (used in both portal and standalone modes) ──
+    _verify_body = f"""
+    <section style="margin-bottom:24px;">
+      <h1 class="page-title" style="font-size:24px;">Verificaci&oacute;n de documentos</h1>
+      <div class="page-title-accent" style="width:42px;height:3px;background:#e06020;border-radius:2px;margin:8px 0 6px;"></div>
+      <p style="font-size:14px;color:#6b7280;margin-top:4px;">Comprueba si un documento fue emitido oficialmente por Casa Monarca</p>
+    </section>
+
+    {result_html}{error_html}
+
+    <div class="card" style="padding:28px;margin-bottom:20px;">
+      <h2 style="font-size:16px;font-weight:700;margin-bottom:6px;">Verificar por folio</h2>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:14px;">Ingresa el folio que aparece en el documento o escanea el c&oacute;digo QR.</p>
+      <form method="post" action="/verificar">
+        <label style="display:flex;flex-direction:column;gap:5px;font-size:14px;font-weight:500;">Folio del documento
+          <input type="text" name="folio" placeholder="CM-2026-DOC-XXXXXXXX" value="{escape(folio)}" required style="text-transform:uppercase;font:inherit;font-size:15px;padding:11px 14px;border-radius:10px;border:1.5px solid #e5ddd3;background:#fff;color:#1a2332;outline:none;width:100%;">
+        </label>
+        <button type="submit" style="font:inherit;font-size:14px;font-weight:600;padding:11px 22px;border-radius:10px;border:none;cursor:pointer;background:#e06020;color:#fff;width:100%;margin-top:10px;">Verificar folio</button>
+      </form>
+    </div>
+
+    <div class="card" style="padding:28px;margin-bottom:20px;">
+      <h2 style="font-size:16px;font-weight:700;margin-bottom:6px;">Verificar por archivo</h2>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:14px;">Carga el documento recibido para comparar su contenido con el hash original registrado.</p>
+      <div style="padding:12px 14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;display:flex;gap:10px;align-items:flex-start;margin-bottom:18px;font-size:12px;color:#1e40af;line-height:1.5;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>El sistema calcula el hash SHA-256 del archivo y lo compara con el hash registrado al momento de la firma digital. Si coincide, el documento no fue alterado.</span>
+      </div>
+      <form method="post" action="/verificar/archivo" enctype="multipart/form-data">
+        <label style="display:flex;flex-direction:column;gap:5px;font-size:14px;font-weight:500;">Folio del documento <span style="font-weight:400;color:#9ca3af;">(opcional)</span>
+          <input type="text" name="folio" placeholder="CM-2026-DOC-XXXXXXXX" style="text-transform:uppercase;font:inherit;font-size:15px;padding:11px 14px;border-radius:10px;border:1.5px solid #e5ddd3;background:#fff;color:#1a2332;outline:none;width:100%;">
+          <span style="font-size:11px;color:#9ca3af;">Si no tienes el folio, el sistema buscar&aacute; por el contenido del archivo.</span>
+        </label>
+        <label style="display:flex;flex-direction:column;gap:5px;font-size:14px;font-weight:500;margin-top:12px;">Archivo a verificar
+          <div class="file-zone">
+            <div style="width:36px;height:36px;border-radius:8px;background:#fff3eb;border:1px solid #f0d4c5;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e06020" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+            </div>
+            <div>
+              <div class="file-zone-text" id="vf-text">Arrastra tu documento aqu&iacute;</div>
+              <div class="file-zone-sub" id="vf-sub">o selecciona un archivo</div>
+            </div>
+            <input type="file" name="verify_file" required id="vf" onchange="setVerFile(this)">
+          </div>
+        </label>
+        <button type="submit" style="font:inherit;font-size:14px;font-weight:600;padding:11px 22px;border-radius:10px;border:none;cursor:pointer;background:#4b5563;color:#fff;width:100%;margin-top:14px;">Verificar archivo</button>
+      </form>
+    </div>
+
+    <script>
+    function setVerFile(input) {{
+      var textEl = document.getElementById('vf-text');
+      var subEl = document.getElementById('vf-sub');
+      var zone = input.closest('.file-zone');
+      if (input.files && input.files.length > 0) {{
+        textEl.textContent = input.files[0].name;
+        subEl.textContent = (input.files[0].size / 1024).toFixed(1) + ' KB \\u2714';
+        zone.classList.add('has-file');
+      }} else {{
+        textEl.innerHTML = 'Arrastra tu documento aqu\\u00ed';
+        subEl.textContent = 'o selecciona un archivo';
+        zone.classList.remove('has-file');
+      }}
+    }}
+    </script>
+    """
+
+    # ── If logged in, render inside the portal with sidebar ──
+    if actor:
+        portal_sections = _build_portal_sections(actor, section="verificar")
+        return base_page("Verificar documento", _verify_body, actor=actor, portal_sections=portal_sections)
+
+    # ── Public standalone page (no login) ──
+    return f"""<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Verificar documento &middot; Casa Monarca</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
+    body{{font-family:'Inter',system-ui,sans-serif;font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased;min-height:100vh;background:#f5f0e8;}}
+    main{{max-width:700px;margin:0 auto;padding:40px 20px 80px;}}
+    .header{{text-align:center;margin-bottom:32px;}}
+    .header img{{height:50px;margin-bottom:12px;}}
+    h1{{font-size:24px;font-weight:800;color:#1a2332;letter-spacing:-0.4px;}}
+    .subtitle{{font-size:14px;color:#6b7280;margin-top:4px;}}
+    .card{{background:#fff;border:1px solid #e5ddd3;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 16px rgba(0,0,0,0.05);padding:28px;margin-bottom:20px;}}
+    label{{display:flex;flex-direction:column;gap:5px;font-size:14px;font-weight:500;color:#1a2332;}}
+    input[type="text"]{{font:inherit;font-size:15px;padding:11px 14px;border-radius:10px;border:1.5px solid #e5ddd3;background:#fff;color:#1a2332;outline:none;width:100%;transition:border-color .15s,box-shadow .15s;}}
+    input[type="text"]:focus{{border-color:#e06020;box-shadow:0 0 0 3px rgba(224,96,32,0.12);}}
+    .btn{{font:inherit;font-size:14px;font-weight:600;padding:11px 22px;border-radius:10px;border:none;cursor:pointer;background:#e06020;color:#fff;width:100%;margin-top:10px;}}
+    .btn:hover{{background:#bf4f10;}}
+    .btn-secondary{{background:#4b5563;}}
+    .btn-secondary:hover{{background:#374151;}}
+    .file-zone{{position:relative;display:flex;align-items:center;gap:14px;border:1.5px solid #f0d4c5;border-radius:10px;padding:13px 16px;cursor:pointer;background:#fff8f5;transition:border-color .15s,background .15s;overflow:hidden;margin-top:4px;}}
+    .file-zone:hover{{border-color:#e06020;background:#fff3eb;}}
+    .file-zone input[type="file"]{{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;}}
+    .file-zone.has-file{{border-color:#22c55e;background:#f0fdf4;}}
+    .file-zone.has-file .fz-text{{color:#166534;}}
+    .file-zone.has-file .fz-sub{{color:#16a34a;}}
+    .divider{{border:none;border-top:1px solid #e5ddd3;margin:20px 0;}}
+    code{{background:#faf7f3;border:1px solid #e5ddd3;border-radius:4px;padding:1px 5px;font-family:'Courier New',monospace;font-size:12px;}}
+    .footer{{text-align:center;margin-top:32px;font-size:12px;color:#9ca3af;}}
+    .footer a{{color:#e06020;text-decoration:none;font-weight:600;}}
+    .info-box{{padding:12px 14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;display:flex;gap:10px;align-items:flex-start;margin-bottom:18px;font-size:12px;color:#1e40af;line-height:1.5;}}
+  </style>
+</head>
+<body>
+  <main>
+    <div style="text-align:center;margin-bottom:24px;">
+      <img src="/static/logoCasaMonarca.png" alt="Casa Monarca" style="height:50px;margin-bottom:12px;">
+    </div>
+
+    {_verify_body}
+
+    <div style="text-align:center;margin-top:32px;font-size:12px;color:#9ca3af;">
+      <p>&copy; 2026 Casa Monarca &mdash; Ayuda Humanitaria al Migrante, A.B.P.</p>
+      <p style="margin-top:4px;">Este portal no almacena informaci&oacute;n personal. <a href="/login" style="color:#e06020;text-decoration:none;font-weight:600;">Acceso interno &rarr;</a></p>
+    </div>
+  </main>
+</body>
+</html>"""
+
+
+@app.get("/verificar", response_class=HTMLResponse)
+def public_verify_page(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    actor = _try_get_session_actor(request, db)
+    return HTMLResponse(_render_verification_page(actor=actor))
+
+
+@app.get("/verificar/{folio}", response_class=HTMLResponse)
+def public_verify_by_folio_get(
+    folio: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    ip = request.client.host if request.client else None
+    ua = request.headers.get("user-agent", "")[:255] or None
+    doc, result = DocumentService.verify_by_folio(db, folio, ip_address=ip, user_agent_str=ua)
+
+    AuditService.log(
+        db,
+        event_type="document_verification",
+        action="verify_by_folio",
+        resource="documents",
+        result="success" if result == "valid" else "failure",
+        metadata={"folio": folio, "result": result},
+        ip_address=ip,
+        user_agent=ua,
+    )
+
+    actor = _try_get_session_actor(request, db)
+    return HTMLResponse(_render_verification_page(result=result, doc=doc, folio=folio, actor=actor))
+
+
+@app.post("/verificar", response_class=HTMLResponse)
+def public_verify_by_folio_post(
+    request: Request,
+    folio: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    ip = request.client.host if request.client else None
+    ua = request.headers.get("user-agent", "")[:255] or None
+    doc, result = DocumentService.verify_by_folio(db, folio, ip_address=ip, user_agent_str=ua)
+
+    AuditService.log(
+        db,
+        event_type="document_verification",
+        action="verify_by_folio",
+        resource="documents",
+        result="success" if result == "valid" else "failure",
+        metadata={"folio": folio, "result": result},
+        ip_address=ip,
+        user_agent=ua,
+    )
+
+    actor = _try_get_session_actor(request, db)
+    return HTMLResponse(_render_verification_page(result=result, doc=doc, folio=folio, actor=actor))
+
+
+@app.post("/verificar/archivo", response_class=HTMLResponse)
+async def public_verify_by_file(
+    request: Request,
+    folio: str = Form(""),
+    verify_file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    ip = request.client.host if request.client else None
+    ua = request.headers.get("user-agent", "")[:255] or None
+    file_bytes = await verify_file.read()
+
+    actor = _try_get_session_actor(request, db)
+
+    if len(file_bytes) == 0:
+        return HTMLResponse(_render_verification_page(error="El archivo está vacío.", folio=folio, actor=actor))
+
+    doc, result = DocumentService.verify_by_file(
+        db, folio, file_bytes, ip_address=ip, user_agent_str=ua,
+    )
+
+    AuditService.log(
+        db,
+        event_type="document_verification",
+        action="verify_by_file",
+        resource="documents",
+        result="success" if result == "valid" else "failure",
+        metadata={
+            "folio": folio,
+            "result": result,
+            "uploaded_hash": DocumentService.compute_hash(file_bytes),
+        },
+        ip_address=ip,
+        user_agent=ua,
+    )
+
+    return HTMLResponse(_render_verification_page(result=result, doc=doc, folio=folio, actor=actor))
 
 
 @app.get("/logout")
