@@ -1961,19 +1961,6 @@ class DocumentService:
         return doc
 
     @staticmethod
-    def generate_qr_png(verification_url: str) -> bytes:
-        import io
-        import qrcode  # noqa: PLC0415
-
-        qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=2)
-        qr.add_data(verification_url)
-        qr.make(fit=True)
-        img = qr.make_image(fill_color="#1a2332", back_color="white")
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return buf.getvalue()
-
-    @staticmethod
     def list_verifications(db: Session, document_id: int | None = None, limit: int = 50) -> list[DocumentVerification]:
         stmt = select(DocumentVerification).order_by(DocumentVerification.id.desc()).limit(limit)
         if document_id is not None:

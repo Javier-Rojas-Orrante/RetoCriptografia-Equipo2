@@ -1724,7 +1724,6 @@ def render_portal_page(
                 </p>
               </div>
               <span class="status status-{st_css}">{st_label}</span>
-              <a href="/ui/documents/{d.folio}/qr" style="font-size:12px;font-weight:600;color:var(--accent);text-decoration:none;">QR</a>
               <a href="/verificar/{escape(d.folio)}" target="_blank" style="font-size:12px;font-weight:600;color:var(--accent);text-decoration:none;">Verificar</a>"""
             if d.status == "signed" and (actor.role.code == "ADMIN" or d.signer_user_id == actor.id):
                 doc_rows += f"""
@@ -1744,7 +1743,7 @@ def render_portal_page(
 
     <div class="card" style="padding:28px;margin-bottom:16px;">
       <h2 style="margin-bottom:6px;">Firmar documento</h2>
-      <p style="font-size:13px;color:#6b7280;margin-bottom:18px;">Carga un documento para firmarlo digitalmente con tu certificado X.509. Se generar&aacute; un folio &uacute;nico y un c&oacute;digo QR de verificaci&oacute;n.</p>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:18px;">Carga un documento para firmarlo digitalmente con tu certificado X.509. Se generar&aacute; un folio &uacute;nico de verificaci&oacute;n.</p>
 
       <div style="padding:12px 14px;background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;display:flex;gap:10px;align-items:flex-start;margin-bottom:18px;">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -2370,6 +2369,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
     <details class="collapsible-panel" id="notifications">
       <summary><h2>Notificaciones{badge}</h2><span class="summary-button">Abrir</span></summary>
       <div class="panel-body" style="padding:10px 20px 20px;">
+        {f"<div style='text-align:right;margin-bottom:10px;'><form method='post' action='/ui/notifications/read-all'><button type='submit' style='background:#e06020;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;'>Marcar todas atendidas</button></form></div>" if unread_count else ""}
         {notif_rows}
       </div>
     </details>
@@ -3166,7 +3166,7 @@ def admin_register_user(
 
 # ── Document signing & verification endpoints ─────────────────────────────
 
-NOTICE_MESSAGES["document-signed"] = "Documento firmado exitosamente. Se generó un folio único y código QR de verificación."
+NOTICE_MESSAGES["document-signed"] = "Documento firmado exitosamente. Se generó un folio único de verificación."
 NOTICE_MESSAGES["document-revoked"] = "El documento fue revocado correctamente."
 
 
@@ -3400,18 +3400,6 @@ def ui_revoke_document(
     return _login_redirect(resp, actor.id)
 
 
-@app.get("/ui/documents/{folio}/qr")
-def ui_document_qr(folio: str, request: Request, db: Session = Depends(get_db)):
-    doc = DocumentService.find_by_folio(db, folio)
-    if not doc:
-        raise HTTPException(status_code=404, detail="Documento no encontrado")
-
-    base_url = str(request.base_url).rstrip("/")
-    verification_url = f"{base_url}/verificar/{doc.folio}"
-    qr_bytes = DocumentService.generate_qr_png(verification_url)
-    return Response(content=qr_bytes, media_type="image/png")
-
-
 # ── Public verification portal (no login required) ────────────────────────
 
 def _render_verification_page(
@@ -3529,7 +3517,7 @@ def _render_verification_page(
 
     <div class="card" style="padding:28px;margin-bottom:20px;">
       <h2 style="font-size:16px;font-weight:700;margin-bottom:6px;">Verificar por folio</h2>
-      <p style="font-size:13px;color:#6b7280;margin-bottom:14px;">Ingresa el folio que aparece en el documento o escanea el c&oacute;digo QR.</p>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:14px;">Ingresa el folio que aparece en el documento.</p>
       <form method="post" action="/verificar">
         <label style="display:flex;flex-direction:column;gap:5px;font-size:14px;font-weight:500;">Folio del documento
           <input type="text" name="folio" placeholder="CM-2026-DOC-XXXXXXXX" value="{escape(folio)}" required style="text-transform:uppercase;font:inherit;font-size:15px;padding:11px 14px;border-radius:10px;border:1.5px solid #e5ddd3;background:#fff;color:#1a2332;outline:none;width:100%;">
@@ -4316,6 +4304,20 @@ def ui_unlock_user(
     back_href = f"/dashboard?{urlencode({'notice': 'user-unlocked'})}"
     resp = RedirectResponse(url=back_href, status_code=303)
     return _login_redirect(resp, actor.id)
+
+
+@app.post("/ui/notifications/read-all")
+def ui_mark_all_notifications_read(
+    db: Session = Depends(get_db),
+    actor=Depends(_get_session_actor),
+):
+    if not is_active_admin(actor):
+        raise HTTPException(status_code=403, detail="Solo administradores pueden gestionar notificaciones")
+    from app.models import Notification as NotifModel
+    db.query(NotifModel).filter(NotifModel.is_read == False).update({"is_read": True})
+    db.commit()
+    back_href = f"/dashboard?section=notificaciones&as_user={actor.id}"
+    return RedirectResponse(url=back_href, status_code=303)
 
 
 @app.post("/ui/notifications/{notification_id}/read")
