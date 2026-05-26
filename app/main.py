@@ -3468,40 +3468,11 @@ def _render_verification_page(
               <p style="font-size:14px;">RSA-PSS-SHA256</p>
             </div>
           </div>"""
-            # Blind verification: hide details behind privacy gate (signer initials challenge)
-            signer_initials = ""
-            if doc.signer and doc.signer.full_name:
-                parts = doc.signer.full_name.strip().split()
-                signer_initials = "".join(p[0].upper() for p in parts if p)
             result_html += f"""
         <div style="background:#fff;border:1px solid #e5ddd3;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
           <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:12px;">Datos del documento</p>
-          <div id="blind-gate" style="text-align:center;padding:18px;">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#e06020" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            <p style="font-weight:600;font-size:14px;margin:10px 0 4px;color:#1a2332;">Verificaci&oacute;n de identidad (Privacy-first)</p>
-            <p style="font-size:12px;color:#6b7280;margin-bottom:14px;">Para proteger la privacidad del beneficiario, ingresa las iniciales del firmante que aparecen en tu documento.</p>
-            <div style="display:flex;gap:8px;justify-content:center;align-items:center;">
-              <input type="text" id="blind-input" placeholder="Ej: CMR" maxlength="10" style="width:100px;text-align:center;text-transform:uppercase;font-size:16px;font-weight:600;padding:8px;border-radius:8px;border:1.5px solid #e5ddd3;">
-              <button onclick="checkBlind()" style="background:#e06020;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px;">Desbloquear</button>
-            </div>
-            <p id="blind-error" style="color:#dc2626;font-size:12px;margin-top:8px;display:none;">Iniciales incorrectas. Int&eacute;ntalo de nuevo.</p>
-          </div>
-          <div id="blind-details" style="display:none;">
-            {details_block}
-          </div>
-        </div>
-        <script>
-        function checkBlind() {{{{
-          var inp = document.getElementById('blind-input').value.trim().toUpperCase();
-          var expected = '{signer_initials}';
-          if (inp === expected) {{{{
-            document.getElementById('blind-gate').style.display = 'none';
-            document.getElementById('blind-details').style.display = 'block';
-          }}}} else {{{{
-            document.getElementById('blind-error').style.display = 'block';
-          }}}}
-        }}}}
-        </script>"""
+          {details_block}
+        </div>"""
 
     error_html = f'<div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:14px;">{escape(error)}</div>' if error else ""
 
