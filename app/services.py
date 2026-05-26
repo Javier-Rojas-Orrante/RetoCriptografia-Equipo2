@@ -1795,6 +1795,8 @@ class DocumentService:
         *,
         doc: Document,
         cosigner: User,
+        private_key_bytes: bytes,
+        key_password: str = "",
     ) -> Document:
         """Add a co-signature to a document that is pending additional signers."""
         if doc.status != "pending_signatures":
@@ -1817,13 +1819,24 @@ class DocumentService:
         if existing:
             raise ValueError("Ya firmaste este documento anteriormente")
 
-        # Load co-signer's private key
-        cosigner_private_key = AdminSignerService.load_private_key(db, cosigner.id)
-        if cosigner_private_key is None:
-            raise ValueError(
-                "No se encontró la llave privada del co-firmante en el servidor. "
-                "El administrador debe re-emitir las credenciales."
+        # Load co-signer's private key from uploaded bytes
+        try:
+            cosigner_private_key = serialization.load_pem_private_key(
+                private_key_bytes,
+                password=key_password.encode() if key_password else None,
             )
+        except Exception as exc:
+            raise ValueError("No se pudo abrir el archivo de llave privada con esa contraseña") from exc
+
+        if not isinstance(cosigner_private_key, rsa.RSAPrivateKey):
+            raise ValueError("El archivo no contiene una llave privada RSA válida")
+
+        # Verify the uploaded key matches the cosigner's stored certificate
+        cert = x509.load_pem_x509_certificate(cosigner.certificate_pem.encode())
+        cert_pub_numbers = cert.public_key().public_numbers()
+        key_pub_numbers = cosigner_private_key.public_key().public_numbers()
+        if cert_pub_numbers != key_pub_numbers:
+            raise ValueError("La llave privada no corresponde al certificado de este usuario")
 
         hash_bytes = doc.document_hash.encode("utf-8")
         signature_bytes = cosigner_private_key.sign(

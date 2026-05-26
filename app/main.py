@@ -1735,8 +1735,8 @@ def render_portal_page(
         for d in pending_cosign_list:
             sigs_done = len(d.co_signatures)
             sigs_needed = d.required_signers
-            pending_cosign_rows += f"""<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#fff;border-bottom:1px solid #e5ddd3;flex-wrap:wrap;">
-              <div style="flex:1;min-width:180px;">
+            pending_cosign_rows += f"""<div style="padding:16px;background:#fff;border-bottom:1px solid #e5ddd3;">
+              <div style="margin-bottom:10px;">
                 <p style="font-weight:600;font-size:13px;color:#1a2332;">{escape(d.title)}</p>
                 <p style="font-size:12px;color:#6b7280;">
                   <code style="font-size:11px;">{escape(d.folio)}</code> &middot;
@@ -1746,8 +1746,20 @@ def render_portal_page(
                 </p>
                 <p style="font-size:11px;color:#92400e;margin-top:2px;">Firmas: {sigs_done}/{sigs_needed}</p>
               </div>
-              <form method="post" action="/ui/documents/{escape(d.folio)}/cosign" style="margin:0;">
-                <button type="submit" style="background:var(--accent);color:#fff;padding:5px 14px;border-radius:7px;font-size:12px;font-weight:600;border:none;cursor:pointer;">Cofirmar</button>
+              <form method="post" action="/ui/documents/{escape(d.folio)}/cosign"
+                    enctype="multipart/form-data"
+                    style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;">
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                  <label style="font-size:11px;font-weight:600;color:#78350f;">Tu llave privada (private_key.pem)</label>
+                  <input type="file" name="private_key_file" accept=".pem,.key" required
+                    style="font-size:12px;padding:4px;border:1px solid #d1c9be;border-radius:6px;background:#fffbeb;">
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                  <label style="font-size:11px;font-weight:600;color:#78350f;">Contraseña de la llave</label>
+                  <input type="password" name="key_password" placeholder="Contraseña" autocomplete="current-password"
+                    style="font-size:12px;padding:5px 8px;border:1px solid #d1c9be;border-radius:6px;width:160px;">
+                </div>
+                <button type="submit" style="background:var(--accent);color:#fff;padding:6px 16px;border-radius:7px;font-size:12px;font-weight:600;border:none;cursor:pointer;align-self:flex-end;">Cofirmar</button>
               </form>
             </div>"""
 
@@ -3465,9 +3477,11 @@ async def ui_batch_sign(
 
 
 @app.post("/ui/documents/{folio}/cosign")
-def ui_cosign_document(
+async def ui_cosign_document(
     folio: str,
     request: Request,
+    private_key_file: UploadFile = File(...),
+    key_password: str = Form(default=""),
     db: Session = Depends(get_db),
     actor=Depends(_get_session_actor),
 ):
@@ -3478,11 +3492,20 @@ def ui_cosign_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
 
+    if not private_key_file or not private_key_file.filename:
+        raise HTTPException(status_code=400, detail="Debes adjuntar tu archivo de llave privada para firmar")
+
+    private_key_bytes = await private_key_file.read()
+
     ip = request.client.host if request.client else "desconocida"
     ua = request.headers.get("user-agent", "desconocido")[:255]
 
     try:
-        doc = DocumentService.cosign_document(db, doc=doc, cosigner=actor)
+        doc = DocumentService.cosign_document(
+            db, doc=doc, cosigner=actor,
+            private_key_bytes=private_key_bytes,
+            key_password=key_password,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
