@@ -1211,6 +1211,7 @@ def render_portal_page(
     issuer_name: str | None = None,
     section: str = "cuenta",
     documents=None,
+    pending_cosign=None,
 ) -> str:
     permission_text = ", ".join(f"{item['resource']}:{item['action']}" for item in permissions) or "sin permisos"
     verified_html = (
@@ -1707,12 +1708,54 @@ def render_portal_page(
             "revoked": "revoked",
             "expired": "expired",
             "draft": "pending",
+            "pending_signatures": "pending",
         }
+
+        # Build pending-cosign section for users who can sign
+        pending_cosign_list = pending_cosign or []
+        pending_cosign_rows = ""
+        for d in pending_cosign_list:
+            sigs_done = len(d.co_signatures)
+            sigs_needed = d.required_signers
+            pending_cosign_rows += f"""<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#fff;border-bottom:1px solid #e5ddd3;flex-wrap:wrap;">
+              <div style="flex:1;min-width:180px;">
+                <p style="font-weight:600;font-size:13px;color:#1a2332;">{escape(d.title)}</p>
+                <p style="font-size:12px;color:#6b7280;">
+                  <code style="font-size:11px;">{escape(d.folio)}</code> &middot;
+                  {escape(DOC_TYPE_LABELS.get(d.document_type, d.document_type))} &middot;
+                  Iniciado por: {escape(d.signer.full_name)} &middot;
+                  {d.issued_at.strftime('%d/%m/%Y %H:%M')}
+                </p>
+                <p style="font-size:11px;color:#92400e;margin-top:2px;">Firmas: {sigs_done}/{sigs_needed}</p>
+              </div>
+              <form method="post" action="/ui/documents/{escape(d.folio)}/cosign" style="margin:0;">
+                <button type="submit" style="background:var(--accent);color:#fff;padding:5px 14px;border-radius:7px;font-size:12px;font-weight:600;border:none;cursor:pointer;">Cofirmar</button>
+              </form>
+            </div>"""
+
+        _pending_cosign_section = ""
+        if pending_cosign_rows:
+            _pending_cosign_section = f"""
+    <div class="card" style="padding:24px;margin-bottom:16px;border:2px solid #fde68a;background:#fffbeb;">
+      <h2 style="margin-bottom:6px;color:#92400e;">&#9997; Documentos pendientes de tu firma</h2>
+      <p style="font-size:13px;color:#78350f;margin-bottom:14px;">Los siguientes documentos requieren tu firma para quedar v&aacute;lidos.</p>
+      <div style="border:1px solid #fde68a;border-radius:10px;overflow:hidden;">
+        {pending_cosign_rows}
+      </div>
+    </div>"""
 
         doc_rows = ""
         for d in doc_list:
             st_css = _DOC_STATUS_CSS.get(d.status, "pending")
             st_label = DOC_STATUS_LABELS.get(d.status, d.status)
+            # Build signers line
+            if d.co_signatures:
+                signer_names = ", ".join(
+                    escape(s.signer.full_name) for s in sorted(d.co_signatures, key=lambda s: s.signed_at)
+                )
+                sigs_info = f"Firmado por: {signer_names} ({len(d.co_signatures)}/{d.required_signers})"
+            else:
+                sigs_info = f"Firmado por: {escape(d.signer.full_name)}"
             doc_rows += f"""<div class="doc-row" data-type="{escape(d.document_type)}" data-status="{escape(d.status)}" style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#fff;border-bottom:1px solid #e5ddd3;flex-wrap:wrap;">
               <div style="flex:1;min-width:180px;">
                 <p style="font-weight:600;font-size:13px;color:#1a2332;">{escape(d.title)}</p>
@@ -1720,7 +1763,7 @@ def render_portal_page(
                   <code style="font-size:11px;">{escape(d.folio)}</code> &middot;
                   {escape(DOC_TYPE_LABELS.get(d.document_type, d.document_type))} &middot;
                   {d.issued_at.strftime('%d/%m/%Y %H:%M')} &middot;
-                  Firmado por: {escape(d.signer.full_name)}
+                  {sigs_info}
                 </p>
               </div>
               <span class="status status-{st_css}">{st_label}</span>
@@ -1740,6 +1783,7 @@ def render_portal_page(
       <p class="muted" style="font-size:14px;margin-top:2px;">Firma digital de documentos y verificaci&oacute;n de autenticidad</p>
       {render_notice(notice)}
     </section>
+    {_pending_cosign_section}
 
     <div class="card" style="padding:28px;margin-bottom:16px;">
       <h2 style="margin-bottom:6px;">Firmar documento</h2>
@@ -1774,6 +1818,10 @@ def render_portal_page(
           </label>
           <label style="display:flex;flex-direction:column;gap:4px;">Vigencia (d&iacute;as, opcional)
             <input name="expires_days" type="number" min="1" max="3650" placeholder="Dejar vac&iacute;o para sin vencimiento">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;">Firmas requeridas
+            <input name="required_signers" type="number" min="1" max="10" value="1" title="N&uacute;mero m&iacute;nimo de firmantes para que el documento sea v&aacute;lido">
+            <span style="font-size:11px;color:#9ca3af;">1 = solo t&uacute;; m&aacute;s de 1 = requiere co-firmantes adicionales</span>
           </label>
         </div>
         <label style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px;">Archivo a firmar
@@ -1848,6 +1896,7 @@ def render_portal_page(
         <select id="doc-filter-status" onchange="filterDocs()" style="font-size:13px;padding:7px 10px;min-width:140px;">
           <option value="">Todos los estados</option>
           <option value="signed">Firmado</option>
+          <option value="pending_signatures">Pendiente de firma</option>
           <option value="revoked">Revocado</option>
           <option value="expired">Expirado</option>
         </select>
@@ -3024,11 +3073,13 @@ def user_portal(
     issuer_user = UserService.get_user(db, actor.certificate_issuer_user_id) if actor.certificate_issuer_user_id else None
     # Load documents for users with signing rights
     docs = []
+    pending_cosign = []
     if actor.status == "active" and actor.role.code in CRYPTO_ROLE_CODES:
         if actor.role.code == "ADMIN":
             docs = DocumentService.list_documents(db)
         else:
             docs = DocumentService.list_by_signer(db, actor.id)
+        pending_cosign = DocumentService.list_pending_cosign(db, actor.id)
     return HTMLResponse(
         render_portal_page(
             actor,
@@ -3040,6 +3091,7 @@ def user_portal(
             issuer_name=issuer_user.full_name if issuer_user else None,
             section=section,
             documents=docs,
+            pending_cosign=pending_cosign,
         )
     )
 
@@ -3167,6 +3219,9 @@ def admin_register_user(
 # ── Document signing & verification endpoints ─────────────────────────────
 
 NOTICE_MESSAGES["document-signed"] = "Documento firmado exitosamente. Se generó un folio único de verificación."
+NOTICE_MESSAGES["document-pending-signatures"] = "Documento creado. Está pendiente de firmas adicionales para ser válido."
+NOTICE_MESSAGES["document-cosigned"] = "Co-firma agregada exitosamente."
+NOTICE_MESSAGES["document-cosigned-complete"] = "Co-firma agregada. El documento ya tiene todas las firmas requeridas y está listo."
 NOTICE_MESSAGES["document-revoked"] = "El documento fue revocado correctamente."
 
 
@@ -3176,6 +3231,7 @@ async def ui_sign_document(
     title: str = Form(...),
     document_type: str = Form(...),
     expires_days: str = Form(default=""),
+    required_signers: str = Form(default="1"),
     document_file: UploadFile = File(...),
     db: Session = Depends(get_db),
     actor=Depends(_get_session_actor),
@@ -3191,6 +3247,11 @@ async def ui_sign_document(
         except ValueError:
             pass
 
+    try:
+        req_signers = max(1, int(required_signers.strip()))
+    except (ValueError, AttributeError):
+        req_signers = 1
+
     ip = request.client.host if request.client else "desconocida"
     ua = request.headers.get("user-agent", "desconocido")[:255]
 
@@ -3203,9 +3264,12 @@ async def ui_sign_document(
             signer=actor,
             original_filename=document_file.filename,
             expires_days=exp_days,
+            required_signers=req_signers,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+    is_pending = doc.status == "pending_signatures"
 
     AuditService.log(
         db,
@@ -3220,6 +3284,8 @@ async def ui_sign_document(
             "document_type": doc.document_type,
             "hash_sha256": doc.document_hash,
             "certificate_serial": doc.certificate_serial,
+            "required_signers": doc.required_signers,
+            "status": doc.status,
         },
         ip_address=ip,
         user_agent=ua,
@@ -3228,7 +3294,7 @@ async def ui_sign_document(
     # Real-time notification to admins
     NotificationService.create(
         db, type="document_signed",
-        title=f"Documento firmado: {doc.title}",
+        title=f"Documento {'iniciado (multi-firma)' if is_pending else 'firmado'}: {doc.title}",
         message=f"{actor.full_name} firmó '{doc.title}' ({DOC_TYPE_LABELS.get(doc.document_type, doc.document_type)}). Folio: {doc.folio}",
         metadata={"folio": doc.folio, "signer": actor.full_name},
     )
@@ -3238,8 +3304,9 @@ async def ui_sign_document(
         "message": f"{actor.full_name} firmó: {doc.title} (Folio: {doc.folio})",
     }))
 
+    notice_key = "document-pending-signatures" if is_pending else "document-signed"
     resp = RedirectResponse(
-        url=f"/portal?section=documentos&{urlencode({'notice': 'document-signed'})}",
+        url=f"/portal?section=documentos&{urlencode({'notice': notice_key})}",
         status_code=303,
     )
     return _login_redirect(resp, actor.id)
@@ -3316,6 +3383,64 @@ async def ui_batch_sign(
 
     resp = RedirectResponse(
         url=f"/portal?section=documentos&{urlencode({'notice': notice_msg})}",
+        status_code=303,
+    )
+    return _login_redirect(resp, actor.id)
+
+
+@app.post("/ui/documents/{folio}/cosign")
+def ui_cosign_document(
+    folio: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    actor=Depends(_get_session_actor),
+):
+    if not AuthorizationService.authorize(db, actor, "documents", "sign"):
+        raise HTTPException(status_code=403, detail="No tienes permiso para co-firmar documentos")
+
+    doc = DocumentService.find_by_folio(db, folio)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+
+    ip = request.client.host if request.client else "desconocida"
+    ua = request.headers.get("user-agent", "desconocido")[:255]
+
+    try:
+        doc = DocumentService.cosign_document(db, doc=doc, cosigner=actor)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    now_complete = doc.status == "signed"
+
+    AuditService.log(
+        db,
+        event_type="document_cosigned",
+        actor_user_id=actor.id,
+        action="cosign_document",
+        resource="documents",
+        result="success",
+        metadata={
+            "folio": doc.folio,
+            "title": doc.title,
+            "signatures_collected": len(doc.co_signatures),
+            "required_signers": doc.required_signers,
+            "now_complete": now_complete,
+        },
+        ip_address=ip,
+        user_agent=ua,
+    )
+
+    NotificationService.create(
+        db, type="document_cosigned",
+        title=f"Co-firma: {doc.title}",
+        message=f"{actor.full_name} co-firmó '{doc.title}'. Folio: {doc.folio}. "
+                f"Firmas: {len(doc.co_signatures)}/{doc.required_signers}.",
+        metadata={"folio": doc.folio, "cosigner": actor.full_name, "complete": now_complete},
+    )
+
+    notice_key = "document-cosigned-complete" if now_complete else "document-cosigned"
+    resp = RedirectResponse(
+        url=f"/portal?section=documentos&{urlencode({'notice': notice_key})}",
         status_code=303,
     )
     return _login_redirect(resp, actor.id)

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.config import settings
 from app.crypto import database_crypto
 from app.db import engine
-from app.models import AuditLog, Beneficiario, Document, DocumentVerification, Notification, Permission, Role, RolePermission, SystemSecret, User
+from app.models import AuditLog, Beneficiario, Document, DocumentSignature, DocumentVerification, Notification, Permission, Role, RolePermission, SystemSecret, User
 
 ROLE_DEFINITIONS = {
     "ADMIN": {
@@ -1646,6 +1646,7 @@ DOC_TYPE_LABELS = {
 }
 DOC_STATUS_LABELS = {
     "draft": "Borrador",
+    "pending_signatures": "Pendiente de firma",
     "signed": "Firmado",
     "verified": "Verificado",
     "revoked": "Revocado",
@@ -1675,6 +1676,7 @@ class DocumentService:
         signer: User,
         original_filename: str | None = None,
         expires_days: int | None = None,
+        required_signers: int = 1,
     ) -> Document:
         if not role_requires_crypto(signer):
             raise ValueError("Solo usuarios con rol privilegiado pueden firmar documentos")
@@ -1682,6 +1684,8 @@ class DocumentService:
             raise ValueError("El usuario firmante no está activo")
         if not signer.certificate_pem:
             raise ValueError("El usuario firmante no tiene certificado emitido")
+
+        required_signers = max(1, int(required_signers))
 
         # Validate file
         if original_filename:
@@ -1728,38 +1732,147 @@ class DocumentService:
             hashes.SHA256(),
         )
 
+        sig_b64 = base64.b64encode(signature_bytes).decode()
         folio = DocumentService._generate_folio()
         expires_at = None
         if expires_days and expires_days > 0:
             expires_at = datetime.utcnow() + timedelta(days=expires_days)
+
+        initial_status = "signed" if required_signers <= 1 else "pending_signatures"
 
         doc = Document(
             folio=folio,
             title=title.strip(),
             document_type=document_type,
             document_hash=doc_hash,
-            signature=base64.b64encode(signature_bytes).decode(),
+            signature=sig_b64,
             signer_user_id=signer.id,
             certificate_serial=signer.certificate_serial,
             certificate_pem_snapshot=signer.certificate_pem,
-            status="signed",
+            required_signers=required_signers,
+            status=initial_status,
             issued_at=datetime.utcnow(),
             expires_at=expires_at,
             original_filename=original_filename,
             file_size=len(file_bytes),
         )
         db.add(doc)
+        db.flush()  # get doc.id before adding co_signature
+
+        # Record the first signature in the multi-sig table
+        db.add(DocumentSignature(
+            document_id=doc.id,
+            signer_user_id=signer.id,
+            signature=sig_b64,
+            certificate_serial=signer.certificate_serial,
+            certificate_pem_snapshot=signer.certificate_pem,
+        ))
+
         db.commit()
         db.refresh(doc)
         return doc
+
+    @staticmethod
+    def cosign_document(
+        db: Session,
+        *,
+        doc: Document,
+        cosigner: User,
+    ) -> Document:
+        """Add a co-signature to a document that is pending additional signers."""
+        if doc.status != "pending_signatures":
+            raise ValueError("El documento no está pendiente de firmas adicionales")
+        if not role_requires_crypto(cosigner):
+            raise ValueError("Solo usuarios con rol privilegiado pueden firmar documentos")
+        if cosigner.status != "active":
+            raise ValueError("El co-firmante no está activo")
+        if not cosigner.certificate_pem:
+            raise ValueError("El co-firmante no tiene certificado emitido")
+
+        # Check the cosigner hasn't already signed
+        existing = [s for s in doc.co_signatures if s.signer_user_id == cosigner.id]
+        if existing:
+            raise ValueError("Ya firmaste este documento anteriormente")
+
+        # Load co-signer's private key
+        cosigner_private_key = AdminSignerService.load_private_key(db, cosigner.id)
+        if cosigner_private_key is None:
+            raise ValueError(
+                "No se encontró la llave privada del co-firmante en el servidor. "
+                "El administrador debe re-emitir las credenciales."
+            )
+
+        hash_bytes = doc.document_hash.encode("utf-8")
+        signature_bytes = cosigner_private_key.sign(
+            hash_bytes,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH,
+            ),
+            hashes.SHA256(),
+        )
+
+        # Verify immediately
+        cert = x509.load_pem_x509_certificate(cosigner.certificate_pem.encode())
+        cert.public_key().verify(
+            signature_bytes,
+            hash_bytes,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH,
+            ),
+            hashes.SHA256(),
+        )
+
+        db.add(DocumentSignature(
+            document_id=doc.id,
+            signer_user_id=cosigner.id,
+            signature=base64.b64encode(signature_bytes).decode(),
+            certificate_serial=cosigner.certificate_serial,
+            certificate_pem_snapshot=cosigner.certificate_pem,
+        ))
+        db.flush()
+
+        # Reload co_signatures count
+        db.refresh(doc)
+        if len(doc.co_signatures) >= doc.required_signers:
+            doc.status = "signed"
+            doc.updated_at = datetime.utcnow()
+
+        db.commit()
+        db.refresh(doc)
+        return doc
+
+    @staticmethod
+    def list_pending_cosign(db: Session, user_id: int) -> list[Document]:
+        """Return documents pending additional signatures that the user hasn't signed yet."""
+        all_pending = list(
+            db.scalars(
+                select(Document)
+                .options(
+                    joinedload(Document.signer).joinedload(User.role),
+                    joinedload(Document.co_signatures).joinedload(DocumentSignature.signer),
+                )
+                .where(Document.status_lookup == database_crypto.lookup_digest("pending_signatures"))
+            ).unique().all()
+        )
+        result = []
+        for doc in all_pending:
+            already_signed = any(s.signer_user_id == user_id for s in doc.co_signatures)
+            if not already_signed:
+                result.append(doc)
+        return result
 
     @staticmethod
     def find_by_folio(db: Session, folio: str) -> Document | None:
         docs = list(
             db.scalars(
                 select(Document)
-                .options(joinedload(Document.signer).joinedload(User.role))
-            ).all()
+                .options(
+                    joinedload(Document.signer).joinedload(User.role),
+                    joinedload(Document.co_signatures).joinedload(DocumentSignature.signer),
+                )
+            ).unique().all()
         )
         clean_folio = folio.strip().upper()
         for doc in docs:
@@ -1772,8 +1885,11 @@ class DocumentService:
         docs = list(
             db.scalars(
                 select(Document)
-                .options(joinedload(Document.signer).joinedload(User.role))
-            ).all()
+                .options(
+                    joinedload(Document.signer).joinedload(User.role),
+                    joinedload(Document.co_signatures).joinedload(DocumentSignature.signer),
+                )
+            ).unique().all()
         )
         for doc in docs:
             if doc.document_hash == document_hash:
@@ -1785,9 +1901,12 @@ class DocumentService:
         return list(
             db.scalars(
                 select(Document)
-                .options(joinedload(Document.signer).joinedload(User.role))
+                .options(
+                    joinedload(Document.signer).joinedload(User.role),
+                    joinedload(Document.co_signatures).joinedload(DocumentSignature.signer),
+                )
                 .order_by(Document.id.desc())
-            ).all()
+            ).unique().all()
         )
 
     @staticmethod
@@ -1925,6 +2044,8 @@ class DocumentService:
     def _check_document_status(doc: Document) -> str:
         if doc.status == "revoked":
             return "revoked"
+        if doc.status == "pending_signatures":
+            return "pending_signatures"
         if doc.status == "expired":
             return "expired"
         if doc.expires_at and doc.expires_at < datetime.utcnow():

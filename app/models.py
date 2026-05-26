@@ -171,6 +171,7 @@ class Document(Base):
     signer_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     certificate_serial: Mapped[str] = mapped_column(EncryptedText(), nullable=False)
     certificate_pem_snapshot: Mapped[str] = mapped_column(EncryptedText(), nullable=False)
+    required_signers: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     status: Mapped[str] = mapped_column(EncryptedText(), nullable=False, default="signed")
     status_lookup: Mapped[str | None] = mapped_column(String(80), index=True, nullable=True)
     issued_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
@@ -183,6 +184,9 @@ class Document(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     signer: Mapped["User"] = relationship()
+    co_signatures: Mapped[list["DocumentSignature"]] = relationship(
+        "DocumentSignature", back_populates="document", cascade="all, delete-orphan"
+    )
 
     @validates("folio")
     def _sync_folio_lookup(self, _key: str, value: str) -> str:
@@ -195,6 +199,23 @@ class Document(Base):
         clean_value = value.strip()
         self.status_lookup = database_crypto.lookup_digest(clean_value)
         return clean_value
+
+
+class DocumentSignature(Base):
+    """Stores each individual signature on a multi-signer document."""
+
+    __tablename__ = "document_signatures"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), nullable=False)
+    signer_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    signature: Mapped[str] = mapped_column(EncryptedText(), nullable=False)
+    certificate_serial: Mapped[str] = mapped_column(EncryptedText(), nullable=False)
+    certificate_pem_snapshot: Mapped[str] = mapped_column(EncryptedText(), nullable=False)
+    signed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    document: Mapped["Document"] = relationship("Document", back_populates="co_signatures")
+    signer: Mapped["User"] = relationship("User")
 
 
 class DocumentVerification(Base):
