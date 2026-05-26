@@ -1171,7 +1171,7 @@ _DOC_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" str
 _VERIFY_ICON_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>'
 
 
-def _build_portal_sections(actor, section: str = "cuenta") -> list:
+def _build_portal_sections(actor, section: str = "cuenta", pending_cosign_count: int = 0) -> list:
     if not actor:
         return []
     aid = actor.id
@@ -1187,8 +1187,9 @@ def _build_portal_sections(actor, section: str = "cuenta") -> list:
             f"/portal?section=beneficiarios&as_user={aid}", "Beneficiarios", _PEOPLE_ICON_SVG, None, section == "beneficiarios",
         ))
     if actor.status == "active" and actor.role.code in CRYPTO_ROLE_CODES:
+        doc_label = f"Documentos" + (f" ({pending_cosign_count})" if pending_cosign_count else "")
         sections.append((
-            f"/portal?section=documentos&as_user={aid}", "Documentos", _DOC_ICON_SVG, None, section == "documentos",
+            f"/portal?section=documentos&as_user={aid}", doc_label, _DOC_ICON_SVG, None, section == "documentos",
         ))
     if actor.status == "active":
         sections.append((
@@ -1212,6 +1213,7 @@ def render_portal_page(
     section: str = "cuenta",
     documents=None,
     pending_cosign=None,
+    available_cosigners=None,
 ) -> str:
     permission_text = ", ".join(f"{item['resource']}:{item['action']}" for item in permissions) or "sin permisos"
     verified_html = (
@@ -1702,6 +1704,22 @@ def render_portal_page(
             for k, v in DOC_TYPE_LABELS.items()
         )
 
+        # Build co-signer checkboxes for the sign form
+        _cosigner_list = available_cosigners or []
+        if _cosigner_list:
+            _cosigner_checkboxes = "".join(
+                f'<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fff;'
+                f'border:1px solid #e5ddd3;border-radius:6px;cursor:pointer;font-size:13px;">'
+                f'<input type="checkbox" name="required_cosigner_ids" value="{u.id}" '
+                f'onchange="validateCosigners()" style="width:15px;height:15px;accent-color:var(--accent);">'
+                f'<span>{escape(u.full_name)}</span>'
+                f'<span style="font-size:11px;color:#6b7280;margin-left:4px;">({escape(u.role.code)})</span>'
+                f'</label>'
+                for u in _cosigner_list
+            )
+        else:
+            _cosigner_checkboxes = '<p style="font-size:13px;color:#6b7280;">No hay otros usuarios con rol privilegiado activos disponibles.</p>'
+
         _DOC_STATUS_CSS = {
             "signed": "active",
             "verified": "active",
@@ -1819,10 +1837,20 @@ def render_portal_page(
           <label style="display:flex;flex-direction:column;gap:4px;">Vigencia (d&iacute;as, opcional)
             <input name="expires_days" type="number" min="1" max="3650" placeholder="Dejar vac&iacute;o para sin vencimiento">
           </label>
-          <label style="display:flex;flex-direction:column;gap:4px;">Firmas requeridas
-            <input name="required_signers" type="number" min="1" max="10" value="1" title="N&uacute;mero m&iacute;nimo de firmantes para que el documento sea v&aacute;lido">
-            <span style="font-size:11px;color:#9ca3af;">1 = solo t&uacute;; m&aacute;s de 1 = requiere co-firmantes adicionales</span>
+          <label style="display:flex;flex-direction:column;gap:4px;">Requiere co-firmantes
+            <select id="multisig-toggle" onchange="toggleCosignerList(this)" style="font-size:13px;padding:7px 10px;">
+              <option value="0">No — solo yo firmo</option>
+              <option value="1">S&iacute; — designar co-firmantes</option>
+            </select>
           </label>
+        </div>
+        <div id="cosigner-panel" style="display:none;margin-bottom:14px;padding:14px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;">
+          <p style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:8px;">&#9997; Selecciona qui&eacute;n debe co-firmar</p>
+          <p style="font-size:12px;color:#78350f;margin-bottom:10px;">El documento quedar&aacute; pendiente hasta que <strong>todos</strong> los seleccionados firmen.</p>
+          <div id="cosigner-list" style="display:flex;flex-direction:column;gap:6px;">
+            {_cosigner_checkboxes}
+          </div>
+          <p id="cosigner-error" style="display:none;font-size:12px;color:#dc2626;margin-top:8px;font-weight:600;">Debes seleccionar al menos un co-firmante.</p>
         </div>
         <label style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px;">Archivo a firmar
           <span style="font-size:11px;color:#9ca3af;">Formatos: PDF, DOC, DOCX, TXT, ODT &mdash; M&aacute;ximo 20 MB</span>
@@ -1910,6 +1938,28 @@ def render_portal_page(
     </div>
 
     <script>
+    function toggleCosignerList(sel) {{
+      var panel = document.getElementById('cosigner-panel');
+      panel.style.display = sel.value === '1' ? 'block' : 'none';
+      if (sel.value !== '1') {{
+        document.querySelectorAll('#cosigner-list input[type=checkbox]').forEach(function(cb) {{ cb.checked = false; }});
+        document.getElementById('cosigner-error').style.display = 'none';
+      }}
+    }}
+    function validateCosigners() {{
+      var panel = document.getElementById('cosigner-panel');
+      if (panel.style.display === 'none') return true;
+      var checked = document.querySelectorAll('#cosigner-list input[type=checkbox]:checked').length;
+      var err = document.getElementById('cosigner-error');
+      err.style.display = checked === 0 ? 'block' : 'none';
+      return checked > 0;
+    }}
+    document.querySelector('form[action="/ui/documents/sign"]').addEventListener('submit', function(e) {{
+      var sel = document.getElementById('multisig-toggle');
+      if (sel.value === '1' && !validateCosigners()) {{
+        e.preventDefault();
+      }}
+    }});
     function setDocFile(input) {{
       var zone = input.closest('.file-zone');
       var textEl = document.getElementById('docf-text');
@@ -2003,7 +2053,7 @@ def render_portal_page(
     }}
     </script>
     """
-    return base_page("Portal \u00b7 Casa Monarca", body, actor=actor, portal_sections=_build_portal_sections(actor, section))
+    return base_page("Portal \u00b7 Casa Monarca", body, actor=actor, portal_sections=_build_portal_sections(actor, section, pending_cosign_count=len(pending_cosign or [])))
 
 
 def _render_beneficiarios_admin(actor, bens: list) -> str:
@@ -3074,12 +3124,22 @@ def user_portal(
     # Load documents for users with signing rights
     docs = []
     pending_cosign = []
+    available_cosigners = []
     if actor.status == "active" and actor.role.code in CRYPTO_ROLE_CODES:
         if actor.role.code == "ADMIN":
             docs = DocumentService.list_documents(db)
         else:
             docs = DocumentService.list_by_signer(db, actor.id)
         pending_cosign = DocumentService.list_pending_cosign(db, actor.id)
+        # Users eligible to be designated co-signers (active crypto roles, not self)
+        all_users = UserService.list_users(db)
+        available_cosigners = [
+            u for u in all_users
+            if u.id != actor.id
+            and u.status == "active"
+            and role_requires_crypto(u)
+            and u.certificate_pem
+        ]
     return HTMLResponse(
         render_portal_page(
             actor,
@@ -3092,6 +3152,7 @@ def user_portal(
             section=section,
             documents=docs,
             pending_cosign=pending_cosign,
+            available_cosigners=available_cosigners,
         )
     )
 
@@ -3231,7 +3292,7 @@ async def ui_sign_document(
     title: str = Form(...),
     document_type: str = Form(...),
     expires_days: str = Form(default=""),
-    required_signers: str = Form(default="1"),
+    required_cosigner_ids: list[int] = Form(default=[]),
     document_file: UploadFile = File(...),
     db: Session = Depends(get_db),
     actor=Depends(_get_session_actor),
@@ -3247,11 +3308,6 @@ async def ui_sign_document(
         except ValueError:
             pass
 
-    try:
-        req_signers = max(1, int(required_signers.strip()))
-    except (ValueError, AttributeError):
-        req_signers = 1
-
     ip = request.client.host if request.client else "desconocida"
     ua = request.headers.get("user-agent", "desconocido")[:255]
 
@@ -3264,7 +3320,7 @@ async def ui_sign_document(
             signer=actor,
             original_filename=document_file.filename,
             expires_days=exp_days,
-            required_signers=req_signers,
+            required_cosigner_ids=required_cosigner_ids,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -3303,6 +3359,26 @@ async def ui_sign_document(
         "title": "Documento firmado",
         "message": f"{actor.full_name} firmó: {doc.title} (Folio: {doc.folio})",
     }))
+
+    # Notify each designated co-signer personally
+    if is_pending:
+        for req in doc.required_cosigners:
+            NotificationService.create(
+                db, type="cosign_requested",
+                user_id=req.user_id,
+                title=f"Se requiere tu firma: {doc.title}",
+                message=(
+                    f"{actor.full_name} te ha designado como co-firmante requerido del documento "
+                    f"'{doc.title}'. Folio: {doc.folio}. "
+                    f"Ve a tu portal \u2192 Documentos para cofirmar."
+                ),
+                metadata={"folio": doc.folio, "signer": actor.full_name},
+            )
+            _fire_ws(_ws_manager.send_to_user(req.user_id, {
+                "type": "cosign_requested", "level": "warning",
+                "title": "Se requiere tu firma",
+                "message": f"{actor.full_name} solicita tu firma en: {doc.title} (Folio: {doc.folio})",
+            }))
 
     notice_key = "document-pending-signatures" if is_pending else "document-signed"
     resp = RedirectResponse(

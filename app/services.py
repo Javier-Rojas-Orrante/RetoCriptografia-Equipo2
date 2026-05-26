@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.config import settings
 from app.crypto import database_crypto
 from app.db import engine
-from app.models import AuditLog, Beneficiario, Document, DocumentSignature, DocumentVerification, Notification, Permission, Role, RolePermission, SystemSecret, User
+from app.models import AuditLog, Beneficiario, Document, DocumentRequiredSigner, DocumentSignature, DocumentVerification, Notification, Permission, Role, RolePermission, SystemSecret, User
 
 ROLE_DEFINITIONS = {
     "ADMIN": {
@@ -1676,7 +1676,7 @@ class DocumentService:
         signer: User,
         original_filename: str | None = None,
         expires_days: int | None = None,
-        required_signers: int = 1,
+        required_cosigner_ids: list[int] | None = None,
     ) -> Document:
         if not role_requires_crypto(signer):
             raise ValueError("Solo usuarios con rol privilegiado pueden firmar documentos")
@@ -1685,7 +1685,20 @@ class DocumentService:
         if not signer.certificate_pem:
             raise ValueError("El usuario firmante no tiene certificado emitido")
 
-        required_signers = max(1, int(required_signers))
+        required_cosigner_ids = [uid for uid in (required_cosigner_ids or []) if uid != signer.id]
+        required_signers = 1 + len(required_cosigner_ids)
+
+        # Validate each required cosigner
+        for uid in required_cosigner_ids:
+            co_user = db.get(User, uid)
+            if co_user is None:
+                raise ValueError(f"Co-firmante con ID {uid} no encontrado")
+            if co_user.status != "active":
+                raise ValueError(f"El co-firmante '{co_user.full_name}' no está activo")
+            if not role_requires_crypto(co_user):
+                raise ValueError(f"El co-firmante '{co_user.full_name}' no tiene rol con privilegio criptográfico")
+            if not co_user.certificate_pem:
+                raise ValueError(f"El co-firmante '{co_user.full_name}' no tiene certificado emitido")
 
         # Validate file
         if original_filename:
@@ -1757,7 +1770,7 @@ class DocumentService:
             file_size=len(file_bytes),
         )
         db.add(doc)
-        db.flush()  # get doc.id before adding co_signature
+        db.flush()  # get doc.id before adding related rows
 
         # Record the first signature in the multi-sig table
         db.add(DocumentSignature(
@@ -1767,6 +1780,10 @@ class DocumentService:
             certificate_serial=signer.certificate_serial,
             certificate_pem_snapshot=signer.certificate_pem,
         ))
+
+        # Store the designated co-signers
+        for uid in required_cosigner_ids:
+            db.add(DocumentRequiredSigner(document_id=doc.id, user_id=uid))
 
         db.commit()
         db.refresh(doc)
@@ -1788,6 +1805,12 @@ class DocumentService:
             raise ValueError("El co-firmante no está activo")
         if not cosigner.certificate_pem:
             raise ValueError("El co-firmante no tiene certificado emitido")
+
+        # If specific co-signers were designated, enforce only they can sign
+        if doc.required_cosigners:
+            allowed_ids = {r.user_id for r in doc.required_cosigners}
+            if cosigner.id not in allowed_ids:
+                raise ValueError("No estás designado como co-firmante requerido de este documento")
 
         # Check the cosigner hasn't already signed
         existing = [s for s in doc.co_signatures if s.signer_user_id == cosigner.id]
@@ -1845,19 +1868,24 @@ class DocumentService:
 
     @staticmethod
     def list_pending_cosign(db: Session, user_id: int) -> list[Document]:
-        """Return documents pending additional signatures that the user hasn't signed yet."""
+        """Return documents pending additional signatures that the user is required to sign."""
         all_pending = list(
             db.scalars(
                 select(Document)
                 .options(
                     joinedload(Document.signer).joinedload(User.role),
                     joinedload(Document.co_signatures).joinedload(DocumentSignature.signer),
+                    joinedload(Document.required_cosigners).joinedload(DocumentRequiredSigner.user),
                 )
                 .where(Document.status_lookup == database_crypto.lookup_digest("pending_signatures"))
             ).unique().all()
         )
         result = []
         for doc in all_pending:
+            # Only show if the user is explicitly designated as a required co-signer
+            is_required = any(r.user_id == user_id for r in doc.required_cosigners)
+            if not is_required:
+                continue
             already_signed = any(s.signer_user_id == user_id for s in doc.co_signatures)
             if not already_signed:
                 result.append(doc)
@@ -1871,6 +1899,7 @@ class DocumentService:
                 .options(
                     joinedload(Document.signer).joinedload(User.role),
                     joinedload(Document.co_signatures).joinedload(DocumentSignature.signer),
+                    joinedload(Document.required_cosigners).joinedload(DocumentRequiredSigner.user),
                 )
             ).unique().all()
         )
@@ -1888,6 +1917,7 @@ class DocumentService:
                 .options(
                     joinedload(Document.signer).joinedload(User.role),
                     joinedload(Document.co_signatures).joinedload(DocumentSignature.signer),
+                    joinedload(Document.required_cosigners).joinedload(DocumentRequiredSigner.user),
                 )
             ).unique().all()
         )
@@ -1904,6 +1934,7 @@ class DocumentService:
                 .options(
                     joinedload(Document.signer).joinedload(User.role),
                     joinedload(Document.co_signatures).joinedload(DocumentSignature.signer),
+                    joinedload(Document.required_cosigners).joinedload(DocumentRequiredSigner.user),
                 )
                 .order_by(Document.id.desc())
             ).unique().all()

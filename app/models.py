@@ -187,6 +187,9 @@ class Document(Base):
     co_signatures: Mapped[list["DocumentSignature"]] = relationship(
         "DocumentSignature", back_populates="document", cascade="all, delete-orphan"
     )
+    required_cosigners: Mapped[list["DocumentRequiredSigner"]] = relationship(
+        "DocumentRequiredSigner", back_populates="document", cascade="all, delete-orphan"
+    )
 
     @validates("folio")
     def _sync_folio_lookup(self, _key: str, value: str) -> str:
@@ -216,6 +219,19 @@ class DocumentSignature(Base):
 
     document: Mapped["Document"] = relationship("Document", back_populates="co_signatures")
     signer: Mapped["User"] = relationship("User")
+
+
+class DocumentRequiredSigner(Base):
+    """Designates which specific users must co-sign a multi-signer document."""
+
+    __tablename__ = "document_required_signers"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+
+    document: Mapped["Document"] = relationship("Document", back_populates="required_cosigners")
+    user: Mapped["User"] = relationship("User")
 
 
 class DocumentVerification(Base):
