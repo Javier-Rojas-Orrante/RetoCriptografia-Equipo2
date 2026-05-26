@@ -3432,8 +3432,13 @@ def _render_verification_page(
             st_label = DOC_STATUS_LABELS.get(doc.status, doc.status)
             signer_name = escape(doc.signer.full_name) if doc.signer else "Desconocido"
             signer_role = escape(doc.signer.role.name) if doc.signer and doc.signer.role else ""
-            details_block = f"""
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;">
+            result_html += f"""
+        <div style="background:#fff;border:1px solid #e5ddd3;border-radius:12px;padding:20px 24px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1a2332" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <h2 style="font-size:16px;font-weight:700;margin:0;color:#1a2332;">Datos del documento</h2>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;">
             <div>
               <p style="font-size:11px;font-weight:600;color:#6b7280;">Folio</p>
               <p style="font-weight:600;font-size:14px;"><code>{escape(doc.folio)}</code></p>
@@ -3450,28 +3455,38 @@ def _render_verification_page(
               <p style="font-size:11px;font-weight:600;color:#6b7280;">Estado</p>
               <p style="font-size:14px;font-weight:600;">{st_label}</p>
             </div>
-            <div>
-              <p style="font-size:11px;font-weight:600;color:#6b7280;">Fecha de emisi&oacute;n</p>
-              <p style="font-size:14px;">{doc.issued_at.strftime('%d/%m/%Y %H:%M')}</p>
-            </div>
+          </div>
+        </div>
+        <div style="background:#fff;border:1px solid #e5ddd3;border-radius:12px;padding:20px 24px;margin-bottom:16px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <h2 style="font-size:16px;font-weight:700;margin:0;color:#1a2332;">Integridad del documento</h2>
+          </div>
+          <p style="font-size:12px;color:#6b7280;margin-bottom:12px;">El hash SHA-256 confirma que el contenido del documento no ha sido modificado desde su emisión.</p>
+          <p style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:4px;">Hash SHA-256</p>
+          <p style="font-size:11px;font-family:monospace;word-break:break-all;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:10px 12px;border-radius:8px;">{escape(doc.document_hash)}</p>
+        </div>
+        <div style="background:#fff;border:1px solid #e5ddd3;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1a2332" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <h2 style="font-size:16px;font-weight:700;margin:0;color:#1a2332;">Firma digital</h2>
+          </div>
+          <p style="font-size:12px;color:#6b7280;margin-bottom:14px;">Identidad del firmante y algoritmo criptográfico utilizado para emitir este documento.</p>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;">
             <div>
               <p style="font-size:11px;font-weight:600;color:#6b7280;">Firmado por</p>
               <p style="font-size:14px;">{signer_name}</p>
               <p style="font-size:11px;color:#6b7280;">{signer_role}</p>
             </div>
             <div>
-              <p style="font-size:11px;font-weight:600;color:#6b7280;">Hash SHA-256</p>
-              <p style="font-size:11px;font-family:monospace;word-break:break-all;">{escape(doc.document_hash)}</p>
-            </div>
-            <div>
               <p style="font-size:11px;font-weight:600;color:#6b7280;">Algoritmo de firma</p>
               <p style="font-size:14px;">RSA-PSS-SHA256</p>
             </div>
-          </div>"""
-            result_html += f"""
-        <div style="background:#fff;border:1px solid #e5ddd3;border-radius:12px;padding:20px 24px;margin-bottom:20px;">
-          <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:12px;">Datos del documento</p>
-          {details_block}
+            <div>
+              <p style="font-size:11px;font-weight:600;color:#6b7280;">Fecha de firma</p>
+              <p style="font-size:14px;">{doc.issued_at.strftime('%d/%m/%Y %H:%M')}</p>
+            </div>
+          </div>
         </div>"""
 
     error_html = f'<div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:14px;">{escape(error)}</div>' if error else ""
