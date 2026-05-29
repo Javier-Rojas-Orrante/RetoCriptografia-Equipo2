@@ -1213,6 +1213,7 @@ def render_portal_page(
     section: str = "cuenta",
     documents=None,
     pending_cosign=None,
+    waiting_cosign=None,
     available_cosigners=None,
 ) -> str:
     permission_text = ", ".join(f"{item['resource']}:{item['action']}" for item in permissions) or "sin permisos"
@@ -1708,13 +1709,20 @@ def render_portal_page(
         _cosigner_list = available_cosigners or []
         if _cosigner_list:
             _cosigner_checkboxes = "".join(
-                f'<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fff;'
+                f'<div class="cosigner-row" style="display:flex;align-items:center;gap:8px;">'
+                f'<label style="display:flex;align-items:center;gap:8px;flex:1;padding:6px 10px;background:#fff;'
                 f'border:1px solid #e5ddd3;border-radius:6px;cursor:pointer;font-size:13px;">'
                 f'<input type="checkbox" name="required_cosigner_ids" value="{u.id}" '
-                f'onchange="validateCosigners()" style="width:15px;height:15px;accent-color:var(--accent);">'
+                f'id="cosigner-cb-{u.id}" onchange="onCosignerChange()" '
+                f'style="width:15px;height:15px;accent-color:var(--accent);">'
                 f'<span>{escape(u.full_name)}</span>'
                 f'<span style="font-size:11px;color:#6b7280;margin-left:4px;">({escape(u.role.code)})</span>'
                 f'</label>'
+                f'<span class="seq-badge" style="display:none;background:#e0f2fe;color:#0369a1;'
+                f'border-radius:999px;font-size:12px;font-weight:700;padding:3px 10px;min-width:26px;'
+                f'text-align:center;flex-shrink:0;">1</span>'
+                f'<input type="hidden" class="seq-order-input" name="cosigner_order_{u.id}" value="1">'
+                f'</div>'
                 for u in _cosigner_list
             )
         else:
@@ -1774,6 +1782,74 @@ def render_portal_page(
       </div>
     </div>"""
 
+        # Build waiting-cosign section (sequential docs where it's not the user's turn yet)
+        waiting_cosign_list = waiting_cosign or []
+        waiting_cosign_rows = ""
+        for d in waiting_cosign_list:
+            signed_ids = {s.signer_user_id for s in d.co_signatures}
+            my_req = next((r for r in d.required_cosigners if r.user_id == actor.id), None)
+            my_order = my_req.sign_order if my_req else 1
+            # Compute who is blocking this user
+            blockers = sorted(
+                [r for r in d.required_cosigners if r.sign_order < my_order and r.user_id not in signed_ids],
+                key=lambda r: r.sign_order,
+            )
+            # Build signing chain display
+            chain_html = ""
+            all_steps = sorted({r.sign_order for r in d.required_cosigners})
+            for step in all_steps:
+                step_signers = [r for r in d.required_cosigners if r.sign_order == step]
+                step_signed = all(r.user_id in signed_ids for r in step_signers)
+                step_is_mine = any(r.user_id == actor.id for r in step_signers)
+                step_names = ", ".join(escape(r.user.full_name) for r in step_signers)
+                if step_is_mine:
+                    badge_style = "background:#fef3c7;color:#92400e;border:1px solid #fcd34d;"
+                    icon = "&#9679;"
+                elif step_signed:
+                    badge_style = "background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;"
+                    icon = "&#10003;"
+                else:
+                    badge_style = "background:#f3f4f6;color:#6b7280;border:1px solid #d1d5db;"
+                    icon = "&#9675;"
+                chain_html += (
+                    f'<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;'
+                    f'border-radius:999px;font-size:11px;font-weight:600;{badge_style}">'
+                    f'{icon} #{step} {step_names}</span>'
+                    f'<span style="color:#d1d5db;font-size:14px;">&#8594;</span>'
+                )
+            # Remove trailing arrow
+            if chain_html.endswith('<span style="color:#d1d5db;font-size:14px;">&#8594;</span>'):
+                chain_html = chain_html[:-len('<span style="color:#d1d5db;font-size:14px;">&#8594;</span>')]
+            blocker_names = ", ".join(escape(r.user.full_name) for r in blockers)
+            waiting_cosign_rows += f"""<div style="padding:16px;background:#fff;border-bottom:1px solid #e5ddd3;">
+              <div>
+                <p style="font-weight:600;font-size:13px;color:#1a2332;">{escape(d.title)}</p>
+                <p style="font-size:12px;color:#6b7280;margin-top:2px;">
+                  <code style="font-size:11px;">{escape(d.folio)}</code> &middot;
+                  {escape(DOC_TYPE_LABELS.get(d.document_type, d.document_type))} &middot;
+                  Iniciado por: {escape(d.signer.full_name)} &middot;
+                  {d.issued_at.strftime('%d/%m/%Y %H:%M')}
+                </p>
+                <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:8px;">
+                  {chain_html}
+                </div>
+                <p style="font-size:12px;color:#b45309;margin-top:8px;font-weight:500;">
+                  &#8987; Esperando a: <strong>{blocker_names}</strong>
+                </p>
+              </div>
+            </div>"""
+
+        _waiting_cosign_section = ""
+        if waiting_cosign_rows:
+            _waiting_cosign_section = f"""
+    <div class="card" style="padding:24px;margin-bottom:16px;border:2px solid #d1d5db;background:#f9fafb;">
+      <h2 style="margin-bottom:6px;color:#374151;">&#8987; Esperando tu turno para firmar</h2>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:14px;">Estos documentos requieren tu firma, pero debes esperar a que firmen primero las personas que te anteceden en el orden.</p>
+      <div style="border:1px solid #d1d5db;border-radius:10px;overflow:hidden;">
+        {waiting_cosign_rows}
+      </div>
+    </div>"""
+
         doc_rows = ""
         for d in doc_list:
             st_css = _DOC_STATUS_CSS.get(d.status, "pending")
@@ -1814,6 +1890,7 @@ def render_portal_page(
       {render_notice(notice)}
     </section>
     {_pending_cosign_section}
+    {_waiting_cosign_section}
 
     <div class="card" style="padding:28px;margin-bottom:16px;">
       <h2 style="margin-bottom:6px;">Firmar documento</h2>
@@ -1859,6 +1936,12 @@ def render_portal_page(
         <div id="cosigner-panel" style="display:none;margin-bottom:14px;padding:14px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;">
           <p style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:8px;">&#9997; Selecciona qui&eacute;n debe co-firmar</p>
           <p style="font-size:12px;color:#78350f;margin-bottom:10px;">El documento quedar&aacute; pendiente hasta que <strong>todos</strong> los seleccionados firmen.</p>
+          <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;cursor:pointer;font-size:13px;">
+            <input type="checkbox" id="sequential-toggle" onchange="toggleSequential(this)" style="width:15px;height:15px;accent-color:var(--accent);">
+            <span style="font-weight:600;color:#92400e;">Firmas secuenciales (respetar orden)</span>
+            <span style="font-size:11px;color:#78350f;margin-left:2px;">&#8212; cada firmante debe esperar al anterior</span>
+          </label>
+          <input type="hidden" name="cosigner_sequential" id="cosigner-sequential-val" value="0">
           <div id="cosigner-list" style="display:flex;flex-direction:column;gap:6px;">
             {_cosigner_checkboxes}
           </div>
@@ -1956,6 +2039,10 @@ def render_portal_page(
       if (sel.value !== '1') {{
         document.querySelectorAll('#cosigner-list input[type=checkbox]').forEach(function(cb) {{ cb.checked = false; }});
         document.getElementById('cosigner-error').style.display = 'none';
+        var seqToggle = document.getElementById('sequential-toggle');
+        if (seqToggle) seqToggle.checked = false;
+        document.getElementById('cosigner-sequential-val').value = '0';
+        document.querySelectorAll('.seq-badge').forEach(function(b) {{ b.style.display = 'none'; }});
       }}
     }}
     function validateCosigners() {{
@@ -1965,6 +2052,40 @@ def render_portal_page(
       var err = document.getElementById('cosigner-error');
       err.style.display = checked === 0 ? 'block' : 'none';
       return checked > 0;
+    }}
+    function toggleSequential(cb) {{
+      document.getElementById('cosigner-sequential-val').value = cb.checked ? '1' : '0';
+      if (cb.checked) {{
+        reassignOrders();
+        document.querySelectorAll('.seq-badge').forEach(function(b) {{
+          var row = b.closest('.cosigner-row');
+          var chk = row ? row.querySelector('input[type=checkbox]') : null;
+          b.style.display = (chk && chk.checked) ? 'inline-block' : 'none';
+        }});
+      }} else {{
+        document.querySelectorAll('.seq-badge').forEach(function(b) {{ b.style.display = 'none'; }});
+      }}
+    }}
+    function reassignOrders() {{
+      var order = 1;
+      document.querySelectorAll('#cosigner-list .cosigner-row').forEach(function(row) {{
+        var chk = row.querySelector('input[type=checkbox]');
+        var badge = row.querySelector('.seq-badge');
+        var hidden = row.querySelector('.seq-order-input');
+        if (chk && chk.checked) {{
+          if (badge) {{ badge.textContent = order; badge.style.display = 'inline-block'; }}
+          if (hidden) hidden.value = order;
+          order++;
+        }} else {{
+          if (badge) badge.style.display = 'none';
+          if (hidden) hidden.value = 1;
+        }}
+      }});
+    }}
+    function onCosignerChange() {{
+      validateCosigners();
+      var seqToggle = document.getElementById('sequential-toggle');
+      if (seqToggle && seqToggle.checked) reassignOrders();
     }}
     document.querySelector('form[action="/ui/documents/sign"]').addEventListener('submit', function(e) {{
       var sel = document.getElementById('multisig-toggle');
@@ -3136,6 +3257,7 @@ def user_portal(
     # Load documents for users with signing rights
     docs = []
     pending_cosign = []
+    waiting_cosign = []
     available_cosigners = []
     if actor.status == "active" and actor.role.code in CRYPTO_ROLE_CODES:
         if actor.role.code == "ADMIN":
@@ -3143,6 +3265,7 @@ def user_portal(
         else:
             docs = DocumentService.list_by_signer(db, actor.id)
         pending_cosign = DocumentService.list_pending_cosign(db, actor.id)
+        waiting_cosign = DocumentService.list_waiting_cosign(db, actor.id)
         # Users eligible to be designated co-signers (active crypto roles, not self)
         all_users = UserService.list_users(db)
         available_cosigners = [
@@ -3164,6 +3287,7 @@ def user_portal(
             section=section,
             documents=docs,
             pending_cosign=pending_cosign,
+            waiting_cosign=waiting_cosign,
             available_cosigners=available_cosigners,
         )
     )
@@ -3305,6 +3429,7 @@ async def ui_sign_document(
     document_type: str = Form(...),
     expires_days: str = Form(default=""),
     required_cosigner_ids: list[int] = Form(default=[]),
+    cosigner_sequential: str = Form(default="0"),
     document_file: UploadFile = File(...),
     db: Session = Depends(get_db),
     actor=Depends(_get_session_actor),
@@ -3320,6 +3445,17 @@ async def ui_sign_document(
         except ValueError:
             pass
 
+    # Build cosigner order map when sequential mode is requested
+    cosigner_order: dict[int, int] = {}
+    if cosigner_sequential == "1" and required_cosigner_ids:
+        form_data = await request.form()
+        for uid in required_cosigner_ids:
+            raw = form_data.get(f"cosigner_order_{uid}", "1")
+            try:
+                cosigner_order[uid] = max(1, int(str(raw)))
+            except (ValueError, TypeError):
+                cosigner_order[uid] = 1
+
     ip = request.client.host if request.client else "desconocida"
     ua = request.headers.get("user-agent", "desconocido")[:255]
 
@@ -3333,6 +3469,7 @@ async def ui_sign_document(
             original_filename=document_file.filename,
             expires_days=exp_days,
             required_cosigner_ids=required_cosigner_ids,
+            cosigner_order=cosigner_order if cosigner_order else None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -3372,9 +3509,13 @@ async def ui_sign_document(
         "message": f"{actor.full_name} firmó: {doc.title} (Folio: {doc.folio})",
     }))
 
-    # Notify each designated co-signer personally
+    # Notify designated co-signers. For sequential docs, only notify those whose
+    # turn comes first (lowest sign_order) to avoid notifying blocked signers.
     if is_pending:
+        first_order = min((r.sign_order for r in doc.required_cosigners), default=1)
         for req in doc.required_cosigners:
+            if req.sign_order != first_order:
+                continue
             NotificationService.create(
                 db, type="cosign_requested",
                 user_id=req.user_id,
@@ -3536,6 +3677,39 @@ async def ui_cosign_document(
                 f"Firmas: {len(doc.co_signatures)}/{doc.required_signers}.",
         metadata={"folio": doc.folio, "cosigner": actor.full_name, "complete": now_complete},
     )
+
+    # If the document is not yet complete, notify the next group of signers who
+    # were just unblocked by this cosignature (sequential signing chain).
+    if not now_complete and doc.required_cosigners:
+        signed_ids = {s.signer_user_id for s in doc.co_signatures}
+        unsigned_reqs = [r for r in doc.required_cosigners if r.user_id not in signed_ids]
+        if unsigned_reqs:
+            next_order = min(r.sign_order for r in unsigned_reqs)
+            # Only notify if ALL signers before next_order have already signed
+            lower_unsigned = [
+                r for r in doc.required_cosigners
+                if r.sign_order < next_order and r.user_id not in signed_ids
+            ]
+            if not lower_unsigned:
+                for req in unsigned_reqs:
+                    if req.sign_order != next_order:
+                        continue
+                    NotificationService.create(
+                        db, type="cosign_requested",
+                        user_id=req.user_id,
+                        title=f"Ahora es tu turno de firmar: {doc.title}",
+                        message=(
+                            f"Ya firmaron los que te anteceden. Ahora te toca a ti co-firmar "
+                            f"'{doc.title}'. Folio: {doc.folio}. "
+                            f"Ve a tu portal \u2192 Documentos para cofirmar."
+                        ),
+                        metadata={"folio": doc.folio, "cosigner": actor.full_name},
+                    )
+                    _fire_ws(_ws_manager.send_to_user(req.user_id, {
+                        "type": "cosign_requested", "level": "warning",
+                        "title": "Ahora es tu turno de firmar",
+                        "message": f"Ya es tu turno de firmar: {doc.title} (Folio: {doc.folio})",
+                    }))
 
     notice_key = "document-cosigned-complete" if now_complete else "document-cosigned"
     resp = RedirectResponse(

@@ -1677,6 +1677,7 @@ class DocumentService:
         original_filename: str | None = None,
         expires_days: int | None = None,
         required_cosigner_ids: list[int] | None = None,
+        cosigner_order: dict[int, int] | None = None,
     ) -> Document:
         if not role_requires_crypto(signer):
             raise ValueError("Solo usuarios con rol privilegiado pueden firmar documentos")
@@ -1781,9 +1782,11 @@ class DocumentService:
             certificate_pem_snapshot=signer.certificate_pem,
         ))
 
-        # Store the designated co-signers
-        for uid in required_cosigner_ids:
-            db.add(DocumentRequiredSigner(document_id=doc.id, user_id=uid))
+        # Store the designated co-signers with their signing order
+        _order_map = cosigner_order or {}
+        for i, uid in enumerate(required_cosigner_ids):
+            order = _order_map.get(uid, i + 1)
+            db.add(DocumentRequiredSigner(document_id=doc.id, user_id=uid, sign_order=order))
 
         db.commit()
         db.refresh(doc)
@@ -1818,6 +1821,22 @@ class DocumentService:
         existing = [s for s in doc.co_signatures if s.signer_user_id == cosigner.id]
         if existing:
             raise ValueError("Ya firmaste este documento anteriormente")
+
+        # Enforce sequential signing order: all required signers with a lower
+        # sign_order must have already signed before this cosigner can proceed.
+        if doc.required_cosigners:
+            my_req = next((r for r in doc.required_cosigners if r.user_id == cosigner.id), None)
+            if my_req and my_req.sign_order > 1:
+                signed_user_ids = {s.signer_user_id for s in doc.co_signatures}
+                blockers = [
+                    r for r in doc.required_cosigners
+                    if r.sign_order < my_req.sign_order and r.user_id not in signed_user_ids
+                ]
+                if blockers:
+                    blocker_names = ", ".join(r.user.full_name for r in sorted(blockers, key=lambda r: r.sign_order))
+                    raise ValueError(
+                        f"No puedes firmar todavía. Debes esperar a que firmen primero: {blocker_names}"
+                    )
 
         # Load co-signer's private key from uploaded bytes
         try:
@@ -1881,7 +1900,7 @@ class DocumentService:
 
     @staticmethod
     def list_pending_cosign(db: Session, user_id: int) -> list[Document]:
-        """Return documents pending additional signatures that the user is required to sign."""
+        """Return documents where the user is required to sign AND it is currently their turn."""
         all_pending = list(
             db.scalars(
                 select(Document)
@@ -1895,12 +1914,52 @@ class DocumentService:
         )
         result = []
         for doc in all_pending:
-            # Only show if the user is explicitly designated as a required co-signer
             is_required = any(r.user_id == user_id for r in doc.required_cosigners)
             if not is_required:
                 continue
             already_signed = any(s.signer_user_id == user_id for s in doc.co_signatures)
-            if not already_signed:
+            if already_signed:
+                continue
+            # Enforce sequential order: only show if no lower-order signer is still pending
+            my_req = next(r for r in doc.required_cosigners if r.user_id == user_id)
+            signed_user_ids = {s.signer_user_id for s in doc.co_signatures}
+            blockers = [
+                r for r in doc.required_cosigners
+                if r.sign_order < my_req.sign_order and r.user_id not in signed_user_ids
+            ]
+            if not blockers:
+                result.append(doc)
+        return result
+
+    @staticmethod
+    def list_waiting_cosign(db: Session, user_id: int) -> list[Document]:
+        """Return documents where the user is a required co-signer but must wait for prior signers."""
+        all_pending = list(
+            db.scalars(
+                select(Document)
+                .options(
+                    joinedload(Document.signer).joinedload(User.role),
+                    joinedload(Document.co_signatures).joinedload(DocumentSignature.signer),
+                    joinedload(Document.required_cosigners).joinedload(DocumentRequiredSigner.user),
+                )
+                .where(Document.status_lookup == database_crypto.lookup_digest("pending_signatures"))
+            ).unique().all()
+        )
+        result = []
+        for doc in all_pending:
+            is_required = any(r.user_id == user_id for r in doc.required_cosigners)
+            if not is_required:
+                continue
+            already_signed = any(s.signer_user_id == user_id for s in doc.co_signatures)
+            if already_signed:
+                continue
+            my_req = next(r for r in doc.required_cosigners if r.user_id == user_id)
+            signed_user_ids = {s.signer_user_id for s in doc.co_signatures}
+            blockers = [
+                r for r in doc.required_cosigners
+                if r.sign_order < my_req.sign_order and r.user_id not in signed_user_ids
+            ]
+            if blockers:
                 result.append(doc)
         return result
 

@@ -229,6 +229,7 @@ class DocumentRequiredSigner(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    sign_order: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     document: Mapped["Document"] = relationship("Document", back_populates="required_cosigners")
     user: Mapped["User"] = relationship("User")
