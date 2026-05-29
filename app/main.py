@@ -3696,6 +3696,24 @@ def _render_verification_page(
             <h2 style="font-size:16px;font-weight:700;margin:0;color:#1a2332;">Firma digital</h2>
           </div>
           <p style="font-size:12px;color:#6b7280;margin-bottom:14px;">Identidad del firmante y algoritmo criptográfico utilizado para emitir este documento.</p>
+          {"".join(f'''
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;{
+            "padding-top:12px;margin-top:12px;border-top:1px solid #f0ece8;" if i > 0 else ""}">
+            <div>
+              <p style="font-size:11px;font-weight:600;color:#6b7280;">{"Co-firmante" if i > 0 else "Firmado por"}</p>
+              <p style="font-size:14px;">{escape(sig.signer.full_name) if sig.signer else "Desconocido"}</p>
+              <p style="font-size:11px;color:#6b7280;">{escape(sig.signer.role.name) if sig.signer and sig.signer.role else ""}</p>
+            </div>
+            <div>
+              <p style="font-size:11px;font-weight:600;color:#6b7280;">Algoritmo de firma</p>
+              <p style="font-size:14px;">RSA-PSS-SHA256</p>
+            </div>
+            <div>
+              <p style="font-size:11px;font-weight:600;color:#6b7280;">Fecha de firma</p>
+              <p style="font-size:14px;">{sig.signed_at.strftime('%d/%m/%Y %H:%M')}</p>
+            </div>
+          </div>''' for i, sig in enumerate(sorted(doc.co_signatures, key=lambda s: s.signed_at)))
+          if doc.co_signatures else f'''
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;">
             <div>
               <p style="font-size:11px;font-weight:600;color:#6b7280;">Firmado por</p>
@@ -3710,7 +3728,7 @@ def _render_verification_page(
               <p style="font-size:11px;font-weight:600;color:#6b7280;">Fecha de firma</p>
               <p style="font-size:14px;">{doc.issued_at.strftime('%d/%m/%Y %H:%M')}</p>
             </div>
-          </div>
+          </div>'''}
         </div>"""
 
     error_html = f'<div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:14px;">{escape(error)}</div>' if error else ""
