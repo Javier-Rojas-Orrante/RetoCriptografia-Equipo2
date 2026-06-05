@@ -48,6 +48,7 @@ async def lifespan(_: FastAPI):
     if settings.seed_demo_data:
         with Session(bind=engine) as db:
             BootstrapService.seed(db)
+            BootstrapService.sync_managed_crypto_users(db)
     else:
         SchemaService.prepare_runtime_schema()
     yield
@@ -2453,17 +2454,17 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
                 issuer_name=user_name_lookup.get(user.certificate_issuer_user_id),
             )
             if not user.certificate_serial or missing_explicit_artifacts:
-                if not needs_new_secret:
+                if user.status in {"pending", "revoked"} and needs_new_secret:
+                    certificate_section += """
+                    <p class="muted" style="margin-top:8px;">Las credenciales se generar&aacute;n autom&aacute;ticamente al activar la cuenta.</p>
+                    """
+                else:
                     action_label = "Generar credenciales" if not user.certificate_serial else "Renovar credenciales"
                     certificate_section += f"""
                     <form method="post" action="/ui/users/{user.id}/certificate" class="inline-form" style="margin-top:10px;">
                       <input type="password" name="credential_secret" placeholder="Contrase&ntilde;a de protecci&oacute;n" required>
                       <button type="submit">{action_label}</button>
                     </form>
-                    """
-                else:
-                    certificate_section += """
-                    <p class="muted" style="margin-top:8px;">Las credenciales se generar&aacute;n autom&aacute;ticamente al activar la cuenta.</p>
                     """
             else:
                 certificate_section += """
@@ -2554,11 +2555,30 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
               <button type="submit">Activar espejo</button>
             </form>
             """
+        backup_password_note = "Contrasena demo documentada por separado. No se sincroniza con la cuenta principal."
+        if settings.seed_demo_data:
+            backup_password_note = (
+                "En modo demo, desbloquea los archivos del espejo con "
+                f"<code>{escape('respaldo1234')}</code>. No se sincroniza con la cuenta principal."
+            )
+        backup_crypto_section = ""
+        if role_requires_crypto(backup_admin):
+            backup_crypto_section = f"""
+            <div>
+              <p class="muted" style="margin-bottom:8px;">Credenciales del administrador espejo</p>
+              {_render_crypto_flow(
+                  backup_admin,
+                  actor.id,
+                  issuer_name=user_name_lookup.get(backup_admin.certificate_issuer_user_id),
+              )}
+            </div>
+            """
         backup_section = f"""
         <div class="stack">
           <p><strong>{escape(backup_admin.full_name)}</strong><br>{escape(backup_admin.email)}</p>
           <p>Estado: <span class="status status-{escape(backup_admin.status)}">{escape(backup_admin.status)}</span></p>
-          <p class="muted">Contrasena demo documentada por separado. No se sincroniza con la cuenta principal.</p>
+          <p class="muted">{backup_password_note}</p>
+          {backup_crypto_section}
           {activate_button}
         </div>
         """
