@@ -65,12 +65,16 @@ El archivo `.env` contiene las variables de configuración. Las más relevantes 
 | Variable | Descripción | Valor por defecto |
 |---|---|---|
 | `DATABASE_URL` | Cadena de conexión a la base de datos | `sqlite:///./identity_demo.db` |
+| `DATABASE_ENCRYPTION_KEY` | Secreto estable para cifrar campos sensibles en la base | `change-this-db-encryption-key` |
 | `SESSION_SECRET` | Secreto para firmar cookies de sesión | `cambia-esto-en-desarrollo` |
 | `CERTS_DIR` | Directorio donde se guardan los certificados | `./generated/certs` |
 | `SEED_DEMO_DATA` | Cargar datos de demostración al iniciar | `true` |
+| `ALLOW_DEMO_ADMIN_BYPASS` | Habilitar el acceso directo `admin / admin` en modo demo | `true` |
 | `ENVIRONMENT` | `development` o `production` | `development` |
 
 En producción se recomienda usar PostgreSQL y generar un `SESSION_SECRET` aleatorio.
+Si la base de datos va a persistir entre redeploys, define también un `DATABASE_ENCRYPTION_KEY`
+estable para que los datos cifrados sigan siendo legibles aunque cambie el `SESSION_SECRET`.
 
 ## Uso básico
 

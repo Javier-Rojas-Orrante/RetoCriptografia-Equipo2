@@ -2339,9 +2339,12 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
     user_rows = []
     for user in users:
         user_uses_crypto = role_requires_crypto(user)
+        needs_new_secret = (
+            (user_uses_crypto and (user.status == "revoked" or not user.certificate_serial))
+            or (not user_uses_crypto and not user.password_hash)
+        )
         activation_form = "<span class='muted'>Sin cambios pendientes</span>"
         if can_activate and user.status in {"pending", "revoked"}:
-            needs_new_secret = (user_uses_crypto and (user.status == "revoked" or not user.certificate_serial)) or (not user_uses_crypto and not user.password_hash)
             if needs_new_secret:
                 if user_uses_crypto:
                     secret_field = f"""
@@ -4781,4 +4784,3 @@ def ui_mark_notification_read(
     NotificationService.mark_read(db, notification_id)
     back_href = f"/dashboard?section=notificaciones&as_user={actor.id}"
     return RedirectResponse(url=back_href, status_code=303)
-
