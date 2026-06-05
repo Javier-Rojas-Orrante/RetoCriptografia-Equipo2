@@ -1,3 +1,6 @@
+# Modelos ORM de la base de datos
+# Todos los campos sensibles usan EncryptedText/EncryptedJSON para cifrarse en reposo
+# Los campos _lookup almacenan un HMAC del valor para poder buscar sin descifrar
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
@@ -7,6 +10,7 @@ from app.crypto import EncryptedJSON, EncryptedText, database_crypto
 from app.db import Base
 
 
+# Beneficiarios: personas migrantes atendidas por Casa Monarca
 class Beneficiario(Base):
     __tablename__ = "beneficiarios"
 
@@ -22,6 +26,7 @@ class Beneficiario(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
+    # Al asignar area, sincroniza automaticamente el digest para busquedas
     @validates("area")
     def _sync_area_lookup(self, _key: str, value: str) -> str:
         clean_value = value.strip()
@@ -29,6 +34,7 @@ class Beneficiario(Base):
         return clean_value
 
 
+# Roles del sistema: ADMIN, COORDINADOR, OPERATIVO, VOLUNTARIO
 class Role(Base):
     __tablename__ = "roles"
 
@@ -44,6 +50,7 @@ class Role(Base):
         return clean_value
 
 
+# Usuarios del sistema con su material criptografico (certificado X.509, llaves)
 class User(Base):
     __tablename__ = "users"
 
@@ -87,6 +94,7 @@ class User(Base):
         return clean_value
 
 
+# Permisos individuales (recurso + accion)
 class Permission(Base):
     __tablename__ = "permissions"
     __table_args__ = (UniqueConstraint("resource", "action", name="uniq_permissions_resource_action"),)
@@ -96,6 +104,7 @@ class Permission(Base):
     action: Mapped[str] = mapped_column(EncryptedText(), nullable=False)
 
 
+# Relacion muchos-a-muchos entre roles y permisos
 class RolePermission(Base):
     __tablename__ = "role_permissions"
     __table_args__ = (UniqueConstraint("role_id", "permission_id", name="uniq_role_permissions"),)
@@ -105,6 +114,7 @@ class RolePermission(Base):
     permission_id: Mapped[int] = mapped_column(ForeignKey("permissions.id"), nullable=False)
 
 
+# Registro de auditoria: cada accion importante se registra aqui
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
@@ -121,6 +131,7 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+# Secretos del sistema (llave privada de la CA, etc.) guardados cifrados en BD
 class SystemSecret(Base):
     __tablename__ = "system_secrets"
 
@@ -138,6 +149,7 @@ class SystemSecret(Base):
         return clean_value
 
 
+# Notificaciones internas del sistema (vencimientos, bloqueos, etc.)
 class Notification(Base):
     __tablename__ = "notifications"
 
@@ -158,6 +170,7 @@ class Notification(Base):
         return clean_value
 
 
+# Documentos firmados digitalmente con certificados X.509
 class Document(Base):
     __tablename__ = "documents"
 
@@ -204,6 +217,7 @@ class Document(Base):
         return clean_value
 
 
+# Co-firmas individuales en documentos que requieren multiples firmantes
 class DocumentSignature(Base):
     """Stores each individual signature on a multi-signer document."""
 
@@ -235,6 +249,7 @@ class DocumentRequiredSigner(Base):
     user: Mapped["User"] = relationship("User")
 
 
+# Registro de verificaciones publicas de documentos
 class DocumentVerification(Base):
     __tablename__ = "document_verifications"
 

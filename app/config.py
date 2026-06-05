@@ -1,3 +1,5 @@
+# Configuracion global de la aplicacion usando pydantic-settings
+# Lee variables de entorno y del archivo .env para setear todo
 from pathlib import Path
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
@@ -10,6 +12,7 @@ DEFAULT_DATABASE_URL = f"sqlite:///{(BASE_DIR / 'identity_demo.db').resolve().as
 DEFAULT_CERTS_DIR = BASE_DIR / "generated" / "certs"
 
 
+# Clase principal de configuracion: cada campo se puede sobreescribir con env vars
 class Settings(BaseSettings):
     app_name: str = "gestor-identidades-demo"
     app_host: str = Field(default="127.0.0.1", validation_alias=AliasChoices("APP_HOST", "HOST"))
@@ -28,6 +31,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=BASE_DIR / ".env", case_sensitive=False)
 
+    # Normaliza la URL de la base de datos para soportar postgres y sqlite
     @field_validator("database_url", mode="before")
     @classmethod
     def normalize_database_url(cls, value: str | None) -> str:
@@ -70,6 +74,7 @@ class Settings(BaseSettings):
         cleaned = value.strip()
         return cleaned or "Administrador General"
 
+    # En produccion, obligamos a que se cambie el secret por seguridad
     @model_validator(mode="after")
     def validate_production_settings(self) -> "Settings":
         if self.is_production and self.session_secret == DEFAULT_SESSION_SECRET:
@@ -93,4 +98,5 @@ class Settings(BaseSettings):
         return self.seed_demo_data
 
 
+# Instancia global que se importa en toda la app
 settings = Settings()

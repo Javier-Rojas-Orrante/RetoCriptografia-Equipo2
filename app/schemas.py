@@ -1,8 +1,10 @@
+# Esquemas Pydantic para serializar las respuestas de la API
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
 
+# Esquema de salida para los roles del sistema
 class RoleOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -11,6 +13,7 @@ class RoleOut(BaseModel):
     name: str
 
 
+# Esquema de salida para datos del usuario
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -34,12 +37,14 @@ class PermissionOut(BaseModel):
     action: str
 
 
+# Combina datos del usuario + rol + permisos para el endpoint /me
 class MeOut(BaseModel):
     user: UserOut
     role: RoleOut
     permissions: list[PermissionOut]
 
 
+# Esquema de salida para los registros de auditoria
 class AuditLogOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

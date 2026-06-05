@@ -1,3 +1,5 @@
+# Logica de negocio principal de la aplicacion
+# Aqui estan todos los servicios: PKI, firma digital, login, auditoria, etc.
 import base64
 import binascii
 import hashlib
@@ -20,6 +22,7 @@ from app.crypto import database_crypto
 from app.db import engine
 from app.models import AuditLog, Beneficiario, Document, DocumentRequiredSigner, DocumentSignature, DocumentVerification, Notification, Permission, Role, RolePermission, SystemSecret, User
 
+# Definicion de roles y sus permisos en el sistema
 ROLE_DEFINITIONS = {
     "ADMIN": {
         "name": "Administrador",
@@ -63,6 +66,7 @@ ROLE_DEFINITIONS = {
 }
 
 VISIBLE_ROLE_CODES = tuple(ROLE_DEFINITIONS)
+# Roles que requieren material criptografico (certificados X.509)
 CRYPTO_ROLE_CODES = {"ADMIN", "COORDINADOR"}
 DEFAULT_CRYPTO_VALIDITY_DAYS = 365
 DEFAULT_PASSWORD = "demo1234"
@@ -79,6 +83,7 @@ OLD_ROLE_MAP = {
     "EXTERNAL": "VOLUNTARIO",
 }
 
+# Usuarios demo para pruebas locales
 DEMO_USERS = [
     {
         "full_name": "Admin Demo",
@@ -197,6 +202,7 @@ def _demo_secret_for_user(user: User) -> str:
     return DEFAULT_PASSWORD
 
 
+# Funciones auxiliares para generar los digests HMAC de busqueda ciega
 def _email_lookup(email: str) -> str:
     return database_crypto.lookup_digest(email.strip().lower()) or ""
 
@@ -228,6 +234,7 @@ def _find_role_by_code(db: Session, code: str) -> Role | None:
     return None
 
 
+# Busca un usuario por email iterando y comparando el valor descifrado
 def _find_user_by_email(db: Session, email: str, *, joined: bool = False) -> User | None:
     statement = select(User)
     if joined:
@@ -247,6 +254,7 @@ def _find_system_secret(db: Session, key: str) -> SystemSecret | None:
     return None
 
 
+# Servicio de auditoria: registra todas las acciones del sistema
 class AuditService:
     @staticmethod
     def log(
@@ -282,6 +290,7 @@ class AuditService:
         return list(db.scalars(select(AuditLog).order_by(AuditLog.id.desc()).limit(limit)).all())
 
 
+# Servicio de notificaciones internas (vencimientos, bloqueos, etc.)
 class NotificationService:
     MAX_LOGIN_ATTEMPTS = 10
     EXPIRY_WARNING_DAYS = 30
@@ -411,6 +420,7 @@ class NotificationService:
         return created
 
 
+# Hasheo de contrasenas con PBKDF2-HMAC-SHA256 (120k iteraciones)
 class PasswordService:
     iterations = 120_000
 
@@ -445,6 +455,7 @@ class PasswordService:
         return hmac.compare_digest(actual, expected)
 
 
+# Migra el esquema de BD: agrega columnas, indices y cifra datos en texto plano
 class SchemaService:
     lookup_columns = {
         "beneficiarios": {"area_lookup": "VARCHAR(80)"},
@@ -881,6 +892,7 @@ class SchemaService:
         cls.ensure_lookup_columns()
 
 
+# Autoridad Certificadora interna (CA) para emitir certificados X.509
 class CertificateAuthorityService:
     base_dir = Path(settings.certs_dir)
     ca_dir = base_dir / "ca"
@@ -905,6 +917,7 @@ class CertificateAuthorityService:
         secret = _find_system_secret(db, key)
         return secret.value_text if secret else None
 
+    # Genera o carga la CA raiz (llave RSA 2048 + certificado autofirmado)
     @classmethod
     def ensure_ca(cls, db: Session) -> tuple[rsa.RSAPrivateKey, x509.Certificate]:
         key_pem = cls._get_secret(db, cls.ca_key_secret)
@@ -970,6 +983,7 @@ class CertificateAuthorityService:
         )
 
 
+# Gestiona la llave privada del admin firmante para firmar certificados de coordinadores
 class AdminSignerService:
     signer_key_prefix = "admin_signer_private_key_pem:"
 
@@ -1036,6 +1050,7 @@ class AdminSignerService:
         return _certificate_summary(certificate, pem_text)
 
 
+# Emision y gestion de certificados X.509 para usuarios
 class CertificateService:
     @staticmethod
     def _verify_self_signed_certificate(certificate: x509.Certificate) -> None:
@@ -1077,6 +1092,7 @@ class CertificateService:
 
         return True
 
+    # Emite un certificado X.509 para un usuario (admin=autofirmado, coord=firmado por admin)
     @staticmethod
     def issue_for_user(db: Session, user: User, password: str, reissue: bool = False) -> User:
         if not role_requires_crypto(user):
@@ -1239,6 +1255,7 @@ class CertificateService:
     def private_key_download_available(user: User) -> bool:
         return bool(user.private_key_pem_encrypted and user.private_key_delivered_at is None)
 
+    # Entrega la llave privada una sola vez y la borra del servidor
     @staticmethod
     def deliver_user_private_key(db: Session, user: User) -> str:
         if not CertificateService.private_key_download_available(user):
@@ -1295,6 +1312,7 @@ class CertificateService:
         }
 
 
+# Login con llave privada + certificado (autenticacion criptografica)
 class SignatureLoginService:
     @staticmethod
     def _certificate_has_user_email(certificate: x509.Certificate, email: str) -> bool:
@@ -1321,6 +1339,7 @@ class SignatureLoginService:
             certificate.signature_hash_algorithm,
         )
 
+    # Valida el certificado contra el usuario: serial, email, vigencia y cadena de firma
     @staticmethod
     def _validate_certificate_for_user(db: Session, user: User, certificate: x509.Certificate) -> tuple[datetime, str]:
         if format(certificate.serial_number, "x") != user.certificate_serial:
@@ -1367,6 +1386,7 @@ class SignatureLoginService:
 
         return now, issuer_label
 
+    # Genera un challenge, lo firma con la llave privada y verifica con el certificado
     @staticmethod
     def _build_login_proof(
         user: User,
@@ -1410,6 +1430,7 @@ class SignatureLoginService:
             "issuer": issuer_label,
         }
 
+    # Flujo completo de login criptografico: abre la llave, valida cert y genera prueba
     @staticmethod
     def authenticate_with_private_key_and_certificate(
         db: Session,
@@ -1475,6 +1496,7 @@ class SignatureLoginService:
         return user, proof
 
 
+# Expira automaticamente usuarios cuya fecha de fin ya paso
 class ExpirationService:
     @staticmethod
     def expire_users(db: Session) -> int:
@@ -1505,6 +1527,7 @@ class ExpirationService:
         return len(users)
 
 
+# Verifica permisos del usuario basandose en la tabla role_permissions
 class AuthorizationService:
     @staticmethod
     def get_permissions(db: Session, user: User) -> list[dict]:
@@ -1525,6 +1548,7 @@ class AuthorizationService:
         )
 
 
+# Recuperacion de emergencia: activa el admin espejo cuando el principal se pierde
 class AdminRecoveryService:
     backup_email = "admin.respaldo@demo.local"
 
@@ -1635,6 +1659,7 @@ def _doc_status_lookup(status: str) -> str:
     return database_crypto.lookup_digest(status.strip()) or ""
 
 
+# Tipos de documentos y sus etiquetas para la UI
 ALLOWED_DOC_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt", ".odt"}
 MAX_DOC_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
 DOC_TYPE_LABELS = {
@@ -1654,6 +1679,7 @@ DOC_STATUS_LABELS = {
 }
 
 
+# Servicio de firma digital de documentos con RSA-PSS-SHA256
 class DocumentService:
 
     @staticmethod
@@ -1666,6 +1692,7 @@ class DocumentService:
     def compute_hash(file_bytes: bytes) -> str:
         return hashlib.sha256(file_bytes).hexdigest()
 
+    # Firma un documento: calcula SHA-256, firma con RSA-PSS y verifica inmediatamente
     @staticmethod
     def sign_document(
         db: Session,
@@ -2049,6 +2076,7 @@ class DocumentService:
         db.commit()
         return doc, result
 
+    # Verifica un documento subido: compara hash, valida firma y estado
     @staticmethod
     def verify_by_file(
         db: Session,
@@ -2192,6 +2220,7 @@ class DocumentService:
         return list(db.scalars(stmt).all())
 
 
+# Login con usuario y contrasena (para roles sin certificado)
 class PasswordLoginService:
     @staticmethod
     def find_user_by_identifier(db: Session, identifier: str) -> User | None:
@@ -2258,6 +2287,7 @@ class PasswordLoginService:
         return user
 
 
+# Inicializacion de la BD: crea roles, permisos, usuarios demo y certificados
 class BootstrapService:
     @staticmethod
     def _can_manage_demo_certificate(user: User) -> bool:
@@ -2486,6 +2516,7 @@ class BootstrapService:
         db.commit()
 
 
+# CRUD de beneficiarios (personas migrantes atendidas)
 class BeneficiarioService:
     AREAS = ["ADMINISTRACION", "LEGAL", "PSICOSOCIAL", "HUMANITARIO", "COMUNICACION"]
     STATUSES = ["nuevo", "en_revision", "canalizado", "activo"]
@@ -2567,6 +2598,7 @@ class BeneficiarioService:
         db.flush()
 
 
+# Operaciones CRUD de usuarios + cambio de rol, estado y vigencia
 class UserService:
     @staticmethod
     def create_user(

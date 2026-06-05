@@ -1,3 +1,6 @@
+# Modulo de cifrado para la base de datos
+# Usa Fernet (AES-128-CBC con HMAC) para encriptar campos sensibles
+# y HMAC-SHA256 para generar digests de busqueda ciega (lookup)
 import base64
 import hashlib
 import hmac
@@ -11,10 +14,12 @@ from app.config import settings
 
 
 class DatabaseCrypto:
+    # Prefijos para identificar valores encriptados y digests en la BD
     token_prefix = "enc:v1:"
     lookup_prefix = "idx:v1:"
 
     def __init__(self, secret: str) -> None:
+        # Derivamos dos claves separadas: una para cifrar y otra para lookups
         normalized_secret = secret.strip() or f"{settings.session_secret}:db-encryption"
         encryption_material = hashlib.sha256(f"{normalized_secret}:cipher".encode()).digest()
         lookup_material = hashlib.sha256(f"{normalized_secret}:lookup".encode()).digest()
@@ -25,6 +30,7 @@ class DatabaseCrypto:
         return isinstance(value, str) and value.startswith(self.token_prefix)
 
     def encrypt_text(self, value: str | None) -> str | None:
+        # Encripta un string con Fernet y le pone el prefijo enc:v1:
         if value is None:
             return None
         if self.is_encrypted(value):
@@ -33,6 +39,7 @@ class DatabaseCrypto:
         return f"{self.token_prefix}{token}"
 
     def decrypt_text(self, value: Any) -> str | None:
+        # Descifra un valor que tenga el prefijo enc:v1:
         if value is None:
             return None
         if not isinstance(value, str):
@@ -63,15 +70,18 @@ class DatabaseCrypto:
         return json.loads(plain_text)
 
     def lookup_digest(self, value: str | None) -> str | None:
+        # Genera un HMAC-SHA256 para poder buscar registros sin descifrar
         if value is None:
             return None
         digest = hmac.new(self._lookup_key, value.encode("utf-8"), hashlib.sha256).hexdigest()
         return f"{self.lookup_prefix}{digest}"
 
 
+# Instancia global que usan los modelos y servicios
 database_crypto = DatabaseCrypto(settings.database_encryption_key)
 
 
+# TypeDecorator de SQLAlchemy: encripta/descifra automaticamente al leer/escribir
 class EncryptedText(TypeDecorator):
     impl = Text
     cache_ok = True
@@ -85,6 +95,7 @@ class EncryptedText(TypeDecorator):
         return database_crypto.decrypt_text(value)
 
 
+# Lo mismo pero para campos JSON: serializa a texto y luego encripta
 class EncryptedJSON(TypeDecorator):
     impl = Text
     cache_ok = True

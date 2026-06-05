@@ -1,4 +1,6 @@
-﻿import asyncio
+﻿# Archivo principal de la aplicacion FastAPI
+# Contiene todas las rutas, renderizado de paginas y logica de sesion
+import asyncio
 import json
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -38,6 +40,8 @@ from app.services import (
 
 
 APP_DIR = Path(__file__).resolve().parent
+
+# Lifespan: al arrancar crea las tablas y carga datos demo si esta habilitado
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
@@ -52,7 +56,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 
-# ── WebSocket connection manager for real-time notifications ──────────────
+# Manager de WebSocket para notificaciones en tiempo real al navegador
 class _WSManager:
     def __init__(self):
         self._connections: dict[int, list[WebSocket]] = {}
@@ -95,7 +99,7 @@ def _fire_ws(coro):
         except Exception:
             pass
 
-# ── Session cookie (signed with HMAC, 8-hour expiry) ──────────────────────
+# Cookie de sesion firmada con HMAC (expira a las 8 horas)
 _SESSION_COOKIE = "cm_session"
 _SESSION_MAX_AGE = 8 * 3600  # seconds
 _signer = URLSafeTimedSerializer(settings.session_secret, salt="cm-session")
@@ -108,6 +112,7 @@ def _make_session_cookie(user_id: int, notice: str | None = None) -> str:
     return _signer.dumps(payload)
 
 
+# Reemplaza caracteres que el font Helvetica de fpdf no soporta
 def _latin1_safe(text: str) -> str:
     """Replace common non-latin-1 characters so fpdf Helvetica font doesn't crash."""
     _REPLACEMENTS = {
@@ -124,6 +129,7 @@ def _latin1_safe(text: str) -> str:
     return text.encode("latin-1", errors="replace").decode("latin-1")
 
 
+# Genera reportes PDF con tabla, encabezado y hash SHA-256 de integridad
 def _pdf_report(
     title: str,
     subtitle: str,
@@ -233,6 +239,7 @@ def _try_get_session_actor(request: Request, db: Session):
     return UserService.get_user(db, payload["uid"])
 
 
+# Mensajes que se muestran como banner despues de una accion
 NOTICE_MESSAGES = {
     "user-created": "Usuario creado en estado pending. Debes activarlo para que pueda entrar.",
     "status-updated": "El acceso del usuario fue actualizado.",
@@ -256,6 +263,7 @@ def parse_end_date(value: str) -> datetime | None:
     return datetime.fromisoformat(cleaned)
 
 
+# Mapeo de areas de coordinador segun el email (coord.legal@ -> LEGAL)
 _COORD_AREA_MAP = {
     "administracion": "ADMINISTRACION",
     "legal": "LEGAL",
@@ -333,6 +341,7 @@ def render_notice(notice: str | None) -> str:
     return f"<div class='{css_class}'>{escape(message)}</div>"
 
 
+# Renderiza la pagina de detalle de un certificado X.509
 def render_certificate_page(title: str, summary: dict, back_href: str) -> str:
     san_items = "".join(f"<li>{escape(item)}</li>" for item in summary["san_emails"]) or "<li>Sin SAN de correo.</li>"
     return f"""
@@ -444,6 +453,7 @@ def _crypto_file_state(user, viewer_id: int) -> str:
     return " &middot; ".join(items)
 
 
+# Muestra el estado de los archivos criptograficos del usuario
 def _render_crypto_flow(user, viewer_id: int, issuer_name: str | None = None, verified: bool = False) -> str:
     material = CertificateService.describe_crypto_material(user, issuer_name=issuer_name)
     if not material:
@@ -491,6 +501,7 @@ def _render_crypto_flow(user, viewer_id: int, issuer_name: str | None = None, ve
     """
 
 
+# Construye la pagina base con sidebar, navegacion y estilos globales
 def base_page(title: str, body: str, actor=None, portal_sections: list | None = None) -> str:
     # sidebar nav items — determined by who's logged in (optional)
     BUTTERFLY_SVG = """<svg width="32" height="28" viewBox="0 0 80 64" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -803,6 +814,7 @@ def base_page(title: str, body: str, actor=None, portal_sections: list | None = 
     """
 
 
+# Renderiza la pagina de login con los campos de archivo, certificado y contrasena
 def render_login_page(error: str | None = None, notice: str | None = None) -> str:
     error_html = f'<div class="alert-error">{escape(error)}</div>' if error else ""
     notice_html = render_notice(notice)
@@ -1046,6 +1058,7 @@ function setFile(id, input) {{
 
 
 
+# Pagina de auto-registro para nuevos usuarios (quedan en estado pending)
 def render_self_register_page(error: str | None = None) -> str:
     BUTTERFLY_SVG_SMALL = """<svg width="36" height="32" viewBox="0 0 80 64" fill="none" xmlns="http://www.w3.org/2000/svg">
       <ellipse cx="20" cy="22" rx="19" ry="14" fill="#d1145a" transform="rotate(-20 20 22)"/>
@@ -1202,6 +1215,7 @@ def _build_portal_sections(actor, section: str = "cuenta", pending_cosign_count:
     return sections
 
 
+# Pagina del portal con contenido adaptado al rol del usuario
 def render_portal_page(
     actor,
     permissions,
@@ -2293,6 +2307,7 @@ def _render_beneficiarios_admin(actor, bens: list) -> str:
     """
 
 
+# Panel de administracion completo con usuarios, auditoria, notificaciones, etc.
 def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certificate_history, notice: str | None = None, error: str | None = None, beneficiarios=None, notifications=None, section: str = "usuarios") -> str:
     _name_parts = actor.full_name.split()
     _initials = (_name_parts[0][0] + (_name_parts[-1][0] if len(_name_parts) > 1 else "")).upper()
@@ -3099,6 +3114,7 @@ def render_dashboard(actor, users, roles, permissions, logs, backup_admin, certi
     """
 
 
+# Rutas de autenticacion
 @app.get("/", response_class=HTMLResponse)
 @app.get("/login", response_class=HTMLResponse)
 def login_page(notice: str | None = Query(default=None)):
@@ -3141,6 +3157,7 @@ def self_register(
     return RedirectResponse(url=f"/login?{urlencode({'notice': 'registro-enviado'})}", status_code=303)
 
 
+# Login: soporta password, certificado+llave, y bypass demo para admin
 @app.post("/login")
 async def login(
     request: Request,
@@ -3249,6 +3266,7 @@ async def login(
     return _login_redirect(resp, user.id)
 
 
+# Portal principal del usuario (muestra info segun su rol)
 @app.get("/portal", response_class=HTMLResponse)
 def user_portal(
     section: str = Query(default="cuenta"),
@@ -3320,6 +3338,7 @@ def portal_request_password_reset(
     return _login_redirect(resp, actor.id)
 
 
+# Crea un beneficiario desde el portal
 @app.post("/ui/beneficiarios", response_class=HTMLResponse)
 def create_beneficiario(
     nombre_completo: str = Form(...),
@@ -3429,6 +3448,7 @@ NOTICE_MESSAGES["document-cosigned-complete"] = "Co-firma agregada. El documento
 NOTICE_MESSAGES["document-revoked"] = "El documento fue revocado correctamente."
 
 
+# Firma digital de un documento con RSA-PSS-SHA256
 @app.post("/ui/documents/sign")
 async def ui_sign_document(
     request: Request,
@@ -3548,6 +3568,7 @@ async def ui_sign_document(
     return _login_redirect(resp, actor.id)
 
 
+# Firma masiva de multiples documentos en un solo paso
 @app.post("/ui/documents/batch-sign")
 async def ui_batch_sign(
     request: Request,
@@ -3624,6 +3645,7 @@ async def ui_batch_sign(
     return _login_redirect(resp, actor.id)
 
 
+# Co-firma: agrega una firma adicional a un documento multifirma
 @app.post("/ui/documents/{folio}/cosign")
 async def ui_cosign_document(
     folio: str,
@@ -4037,6 +4059,7 @@ def _render_verification_page(
 </html>"""
 
 
+# Portal publico de verificacion de documentos (acceso sin login)
 @app.get("/verificar", response_class=HTMLResponse)
 def public_verify_page(
     request: Request,
@@ -4071,6 +4094,7 @@ def public_verify_by_folio_get(
     return HTMLResponse(_render_verification_page(result=result, doc=doc, folio=folio, actor=actor))
 
 
+# Verificacion de documento por folio
 @app.post("/verificar", response_class=HTMLResponse)
 def public_verify_by_folio_post(
     request: Request,
@@ -4111,6 +4135,7 @@ def public_verify_by_folio_post(
     return HTMLResponse(_render_verification_page(result=result, doc=doc, folio=folio, actor=actor))
 
 
+# Verificacion de documento subiendo el archivo original
 @app.post("/verificar/archivo", response_class=HTMLResponse)
 async def public_verify_by_file(
     request: Request,
@@ -4163,6 +4188,7 @@ async def public_verify_by_file(
     return HTMLResponse(_render_verification_page(result=result, doc=doc, folio=folio, actor=actor))
 
 
+# Cierra la sesion borrando la cookie
 @app.get("/logout")
 def logout():
     resp = RedirectResponse(url="/login", status_code=303)
@@ -4175,6 +4201,7 @@ def health():
     return {"status": "ok"}
 
 
+# WebSocket para notificaciones push en tiempo real
 @app.websocket("/ws/notifications")
 async def ws_notifications(ws: WebSocket, db: Session = Depends(get_db)):
     token = ws.cookies.get(_SESSION_COOKIE)
@@ -4191,6 +4218,7 @@ async def ws_notifications(ws: WebSocket, db: Session = Depends(get_db)):
         _ws_manager.disconnect(user_id, ws)
 
 
+# Panel de administracion (solo admins)
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(
     section: str = Query(default="usuarios"),
@@ -4215,6 +4243,7 @@ def dashboard(
     return HTMLResponse(render_dashboard(actor, users, roles, permissions, logs, backup_admin, certificate_history, notice, error=error, beneficiarios=BeneficiarioService.list_all(db), notifications=notifications, section=section))
 
 
+# API REST: datos del usuario autenticado
 @app.get("/api/me", response_model=MeOut)
 def api_me(db: Session = Depends(get_db), actor=Depends(_get_session_actor)):
     return {"user": actor, "role": actor.role, "permissions": AuthorizationService.get_permissions(db, actor)}
@@ -4232,6 +4261,7 @@ def api_audit_logs(db: Session = Depends(get_db), actor=Depends(_get_session_act
     return AuditService.list_recent(db, limit=50)
 
 
+# Exportar logs de auditoria como PDF
 @app.get("/ui/audit-logs/export.pdf")
 def export_audit_logs_pdf(db: Session = Depends(get_db), actor=Depends(_get_session_actor)):
     if not is_active_admin(actor):
@@ -4262,6 +4292,7 @@ def export_audit_logs_pdf(db: Session = Depends(get_db), actor=Depends(_get_sess
     )
 
 
+# Exportar listado de usuarios como PDF
 @app.get("/ui/users/export.pdf")
 def export_users_pdf(db: Session = Depends(get_db), actor=Depends(_get_session_actor)):
     if not (actor.status == "active" and actor.role.code in ("ADMIN", "COORDINADOR")):
@@ -4292,6 +4323,7 @@ def export_users_pdf(db: Session = Depends(get_db), actor=Depends(_get_session_a
     )
 
 
+# Exportar listado de beneficiarios como PDF
 @app.get("/ui/beneficiarios/export.pdf")
 def export_beneficiarios_pdf(db: Session = Depends(get_db), actor=Depends(_get_session_actor)):
     if not (actor.status == "active" and actor.role.code in ("ADMIN", "COORDINADOR")):
@@ -4327,6 +4359,7 @@ def export_beneficiarios_pdf(db: Session = Depends(get_db), actor=Depends(_get_s
     )
 
 
+# Crear un nuevo usuario desde el panel admin
 @app.post("/ui/users")
 def ui_create_user(
     full_name: str = Form(...),
@@ -4363,6 +4396,7 @@ def ui_create_user(
     return redirect_home(actor.id, "user-created")
 
 
+# Cambiar estado de un usuario (activar/revocar)
 @app.post("/ui/users/{user_id}/status")
 def ui_change_status(
     user_id: int,
@@ -4436,6 +4470,7 @@ def ui_change_status(
     return RedirectResponse(url=url, status_code=303)
 
 
+# Actualizar fecha de expiracion de un usuario
 @app.post("/ui/users/{user_id}/expiration")
 def ui_change_expiration(
     user_id: int,
@@ -4476,6 +4511,7 @@ def ui_change_expiration(
     return RedirectResponse(url=url, status_code=303)
 
 
+# Cambiar el rol de un usuario
 @app.post("/ui/users/{user_id}/role")
 def ui_change_role(
     user_id: int,
@@ -4510,6 +4546,7 @@ def ui_change_role(
     return RedirectResponse(url=url, status_code=303)
 
 
+# Generar/renovar certificado X.509 para un usuario
 @app.post("/ui/users/{user_id}/certificate")
 def ui_issue_certificate(
     user_id: int,
@@ -4543,6 +4580,7 @@ def ui_issue_certificate(
     return RedirectResponse(url=url, status_code=303)
 
 
+# Activar el admin espejo (recuperacion de emergencia)
 @app.post("/ui/admin/recovery/activate-mirror")
 def ui_activate_mirror(
     db: Session = Depends(get_db),
@@ -4618,6 +4656,7 @@ def download_public_key_pem(user_id: int, db: Session = Depends(get_db), actor=D
     )
 
 
+# Descargar la llave privada del usuario (una sola vez, luego se borra del server)
 @app.get("/ui/users/{user_id}/private-key.pem")
 def download_private_key_pem(user_id: int, db: Session = Depends(get_db), actor=Depends(_get_session_actor)):
     _require_own_or_admin(actor, user_id)
@@ -4670,6 +4709,7 @@ def download_ca_certificate(db: Session = Depends(get_db), actor=Depends(_get_se
     )
 
 
+# Solicitud de recuperacion de credenciales (la revisa un admin en persona)
 @app.post("/login/recovery-request")
 def recovery_request(
     identifier: str = Form(...),
@@ -4689,6 +4729,7 @@ def recovery_request(
     return RedirectResponse(url=f"/login?{urlencode({'notice': 'recovery-sent'})}", status_code=303)
 
 
+# Desbloquear una cuenta bloqueada por intentos fallidos
 @app.post("/ui/users/{user_id}/unlock")
 def ui_unlock_user(
     user_id: int,
