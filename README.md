@@ -147,7 +147,12 @@ El proyecto no incluye un framework de pruebas automatizadas por el momento. Par
 
 ## Licencia
 
-Este proyecto se distribuye bajo la licencia MIT.
+El código fuente de este proyecto se distribuye bajo la licencia MIT. Consulta
+el archivo `LICENSE` para el texto completo y para las exclusiones aplicables.
+
+Los logos, imágenes, PDFs y demás materiales de identidad o marca de Casa
+Monarca no se distribuyen bajo MIT, salvo que se indique expresamente lo
+contrario.
 
 ## Contacto
 
